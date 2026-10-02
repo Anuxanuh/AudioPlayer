@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="AudioPlayer/AudioPlayer.csproj" />
+  <Project Path="AudioPlayer.Tests/AudioPlayer.Tests.csproj" />
+</Solution>

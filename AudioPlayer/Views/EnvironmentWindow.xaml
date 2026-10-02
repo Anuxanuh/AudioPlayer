@@ -1,0 +1,34 @@
+<Window x:Class="AudioPlayer.Views.EnvironmentWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="本地识别环境检测" Icon="/AudioPlayer;component/Assets/player.ico" Width="800" Height="720" MinWidth="640" MinHeight="500"
+ WindowStartupLocation="CenterOwner" Background="#F3F6F2" FontFamily="Microsoft YaHei UI" ShowInTaskbar="False">
+ <Grid Margin="24">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel Margin="0,0,0,16">
+   <TextBlock Text="本机环境检测" FontSize="24" FontWeight="SemiBold"/>
+   <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="{StaticResource MutedBrush}"/>
+  </StackPanel>
+  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+   <ItemsControl ItemsSource="{Binding Items}"><ItemsControl.ItemTemplate><DataTemplate>
+    <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,4,8"><StackPanel>
+     <TextBlock Text="{Binding Label}" Foreground="{Binding Color}" FontSize="15" FontWeight="SemiBold"/>
+     <TextBox Text="{Binding Detail, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0" Margin="0,7,0,0" FontSize="12"/>
+    </StackPanel></Border>
+   </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+  </ScrollViewer>
+  <StackPanel Grid.Row="2" Margin="0,16,0,0">
+   <TextBlock Text="官方下载（点击后在浏览器打开）" FontWeight="SemiBold" Margin="0,0,0,8"/>
+   <WrapPanel>
+    <TextBlock Margin="0,0,18,8"><Hyperlink NavigateUri="https://www.nvidia.com/Download/index.aspx" RequestNavigate="OpenLink">NVIDIA 驱动</Hyperlink></TextBlock>
+    <TextBlock Margin="0,0,18,8"><Hyperlink NavigateUri="https://developer.nvidia.com/cuda-12-9-1-download-archive" RequestNavigate="OpenLink">CUDA Toolkit 12.9</Hyperlink></TextBlock>
+    <TextBlock Margin="0,0,18,8"><Hyperlink x:Name="CublasDownloadLink" NavigateUri="https://developer.nvidia.com/cuda-12-9-1-download-archive" RequestNavigate="OpenLink">cuBLAS 12 下载（含于 CUDA 12.9）</Hyperlink></TextBlock>
+    <TextBlock Margin="0,0,18,8"><Hyperlink NavigateUri="https://developer.nvidia.com/cublas" RequestNavigate="OpenLink">cuBLAS 官方说明</Hyperlink></TextBlock>
+    <TextBlock Margin="0,0,18,8"><Hyperlink NavigateUri="https://developer.nvidia.com/cudnn-downloads" RequestNavigate="OpenLink">cuDNN 9（选择 CUDA 12）</Hyperlink></TextBlock>
+    <TextBlock Margin="0,0,18,8"><Hyperlink NavigateUri="https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist" RequestNavigate="OpenLink">VC++ x64 运行库</Hyperlink></TextBlock>
+    <TextBlock Margin="0,0,0,8"><Hyperlink NavigateUri="https://www.python.org/downloads/windows/" RequestNavigate="OpenLink">Python 官方网站</Hyperlink></TextBlock>
+   </WrapPanel>
+   <TextBlock Text="缺少 cublas64_12.dll / cublasLt64_12.dll 时，请使用上述 cuBLAS 12 下载链接，选择 Windows x86_64 的 CUDA 12 安装包；CUDA 13 不提供这两个 12 版 DLL。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,10"/>
+   <Button Content="关闭" HorizontalAlignment="Right" Padding="24,8" IsCancel="True" Click="Close_Click"/>
+  </StackPanel>
+ </Grid>
+</Window>

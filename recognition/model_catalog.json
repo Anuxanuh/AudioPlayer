@@ -1,0 +1,42 @@
+[
+  {
+    "id": "tiny",
+    "repo": "Systran/faster-whisper-tiny",
+    "description": "多语言 · 轻量"
+  },
+  {
+    "id": "base",
+    "repo": "Systran/faster-whisper-base",
+    "description": "多语言"
+  },
+  {
+    "id": "small",
+    "repo": "Systran/faster-whisper-small",
+    "description": "多语言"
+  },
+  {
+    "id": "medium",
+    "repo": "Systran/faster-whisper-medium",
+    "description": "多语言"
+  },
+  {
+    "id": "large-v1",
+    "repo": "Systran/faster-whisper-large-v1",
+    "description": "多语言"
+  },
+  {
+    "id": "large-v2",
+    "repo": "Systran/faster-whisper-large-v2",
+    "description": "多语言"
+  },
+  {
+    "id": "large-v3",
+    "repo": "Systran/faster-whisper-large-v3",
+    "description": "多语言"
+  },
+  {
+    "id": "large-v3-turbo",
+    "repo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+    "description": "多语言 · Turbo"
+  }
+]

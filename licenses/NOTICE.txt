@@ -1,0 +1,12 @@
+Third-party notices
+
+TagLibSharp 2.3.0 is distributed as a separate, replaceable DLL under LGPL-2.1.
+Project and source: https://github.com/mono/taglib-sharp
+Package: https://www.nuget.org/packages/TagLibSharp/2.3.0
+The unmodified LGPL text is included as TagLibSharp-LGPL-2.1.txt.
+
+Python 3.13.16: Python Software Foundation License; see python/LICENSE.txt.
+Python dependencies retain their licenses in python/Lib/site-packages/*.dist-info.
+Models retain their upstream README / license files and download-manifest.json.
+Microsoft .NET and the Visual C++ app-local CRT are redistributed unmodified.
+NVIDIA CUDA/cuDNN and drivers are detected on the target system, not bundled.
