@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
         { ".mp3", ".wav", ".m4a", ".aac", ".wma", ".flac", ".aiff", ".aif" };
     private readonly StateStore _store;
+    private readonly PluginManager _plugins = new();
     private readonly PlayerViewModel _view;
     private readonly AudioService _audio = new();
     private readonly PlaybackQueue _queue = new();
@@ -67,6 +68,7 @@ public partial class MainWindow : Window
         LocalEngineLocator.ApplyDefaults(_view.Settings);
         InitializeComponent();
         DataContext = _view;
+        FullLyrics.SeekRequested += SeekFromLyrics;
         ReloadModels();
         FontPicker.ItemsSource = Fonts.SystemFontFamilies.Select(f => f.Source).OrderBy(f => f).ToArray();
         _audio.Opened += () =>
@@ -91,6 +93,12 @@ public partial class MainWindow : Window
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveState(); };
         _view.Settings.PropertyChanged += Settings_PropertyChanged;
         _ready = true;
+        _plugins.Start(Path.Combine(AppContext.BaseDirectory, "plugins"), _store.DirectoryPath, _view.Settings.EnabledPlugins, () => _view.Settings.PythonPath, ScheduleSave);
+        PluginSettingsList.ItemsSource = _plugins.Entries;
+        PluginSummary.Text = _plugins.Entries.Count == 0 ? "未发现插件。将插件文件夹放入程序目录的 plugins 后重启。" : $"已发现 {_plugins.Entries.Count} 个插件，默认关闭。更改开关后重启播放器生效。";
+        if (_plugins.Errors.Count > 0) PluginSummary.Text += "\n" + string.Join("\n", _plugins.Errors);
+        foreach (var plugin in _plugins.Entries.Where(p => p.Page is not null))
+            MainTabs.Items.Add(new TabItem { Header = new TextBlock { Text = plugin.Name, TextWrapping = TextWrapping.Wrap }, Content = plugin.Page });
         if (_integration)
         {
             CreateTray();
@@ -104,6 +112,9 @@ public partial class MainWindow : Window
     private void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (!_ready || _exiting) return;
+        if (e.PropertyName is nameof(PlayerSettings.DesktopLyrics) or nameof(PlayerSettings.LockLyrics) or nameof(PlayerSettings.VerticalLyrics) or nameof(PlayerSettings.RecognizeToSimplified))
+            Log.Information("Setting changed; name={Setting}; desktopLyrics={DesktopLyrics}; locked={Locked}; vertical={Vertical}; simplified={Simplified}",
+                e.PropertyName, _view.Settings.DesktopLyrics, _view.Settings.LockLyrics, _view.Settings.VerticalLyrics, _view.Settings.RecognizeToSimplified);
         if (e.PropertyName == nameof(PlayerSettings.ModelsDirectory)) ReloadModels();
         if (e.PropertyName == nameof(PlayerSettings.ModelPath) && !_refreshingModels)
             _view.Settings.ModelId = _view.Models.FirstOrDefault(m => m.DirectoryPath == _view.Settings.ModelPath)?.Id ?? _view.Settings.ModelId;
@@ -163,11 +174,13 @@ public partial class MainWindow : Window
             {
                 if (_lyricsWindow is null)
                 {
-                    _lyricsWindow = new LyricsWindow(_view.Settings);
-                    _lyricsWindow.PositionSaved += ScheduleSave;
+                    var lyricsWindow = new LyricsWindow(_view.Settings);
+                    _lyricsWindow = lyricsWindow;
+                    lyricsWindow.PositionSaved += ScheduleSave;
+                    lyricsWindow.Closed += (_, _) => { if (ReferenceEquals(_lyricsWindow, lyricsWindow)) _lyricsWindow = null; };
                 }
                 _lyricsWindow.ApplySettings();
-                if (!_lyricsWindow.IsVisible) _lyricsWindow.Show();
+                _lyricsWindow.EnsureVisible();
                 UpdateLyrics();
             }
             else _lyricsWindow?.Hide();
@@ -187,7 +200,7 @@ public partial class MainWindow : Window
     {
         try { _store.Save(_view.State); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        { _view.Status = "配置保存失败：" + ex.Message; }
+        { Log.Error(ex, "Saving application settings failed"); _view.Status = "配置保存失败：" + ex.Message; }
     }
 
     public async void ImportPaths(IEnumerable<string> paths) => await ImportPathsAsync(paths);
@@ -227,7 +240,7 @@ public partial class MainWindow : Window
             ScheduleSave();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        { _view.Status = "读取文件失败：" + ex.Message; }
+        { Log.Warning(ex, "Importing audio files failed"); _view.Status = "读取文件失败：" + ex.Message; }
         finally { _importing = false; }
     }
 
@@ -364,7 +377,7 @@ public partial class MainWindow : Window
         LoadLyrics(track);
         try { _audio.Open(track.FilePath); }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException or NotSupportedException)
-        { _audio.Stop(); _view.Status = "打开音频失败：" + ex.Message; }
+        { Log.Error(ex, "Opening audio failed; path={Path}", track.FilePath); _audio.Stop(); _view.Status = "打开音频失败：" + ex.Message; }
         UpdatePlaybackUi();
     }
 
@@ -420,6 +433,7 @@ public partial class MainWindow : Window
     private void Tick()
     {
         if (_exiting) return;
+        if (_integration && _view.Settings.DesktopLyrics && _lyricsWindow is null) ApplySettings();
         if (!_seeking)
         {
             _updatingSeek = true;
@@ -430,6 +444,16 @@ public partial class MainWindow : Window
         UpdateLyrics();
     }
     private void Seek_MouseDown(object sender, MouseButtonEventArgs e) => _seeking = true;
+    private void SeekFromLyrics(TimeSpan timestamp)
+    {
+        if (!_audio.IsReady) return;
+        double seconds = Math.Clamp(timestamp.TotalSeconds - _view.Settings.LyricOffsetSeconds, 0, _audio.Duration.TotalSeconds);
+        _audio.Seek(seconds);
+        _updatingSeek = true; SeekSlider.Value = seconds; _updatingSeek = false;
+        _view.PositionText = FormatTime(TimeSpan.FromSeconds(seconds));
+        UpdateLyrics();
+        Log.Information("Seek from lyrics; timestamp={Timestamp}; offset={Offset}; targetSeconds={TargetSeconds}; playing={Playing}", timestamp, _view.Settings.LyricOffsetSeconds, seconds, _audio.IsPlaying);
+    }
     private void Seek_MouseUp(object sender, MouseButtonEventArgs e) => FinishSeek();
     private void Seek_LostCapture(object sender, MouseEventArgs e) => FinishSeek();
     private void FinishSeek()
@@ -455,7 +479,7 @@ public partial class MainWindow : Window
             CancelLiveRecognition(); _streamingLines.Clear();
             try { _lyrics = LrcDocument.Load(candidate); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-            { _view.Status = "读取歌词失败：" + ex.Message; }
+            { Log.Warning(ex, "Reading lyrics failed; path={Path}", candidate); _view.Status = "读取歌词失败：" + ex.Message; }
         }
         UpdateLyrics();
     }
@@ -480,7 +504,8 @@ public partial class MainWindow : Window
         var settings = new PlayerSettings
         {
             PythonPath = _view.Settings.PythonPath, ModelPath = _view.Settings.ModelPath, Language = _view.Settings.Language,
-            UseCuda = _view.Settings.UseCuda, SpeechVad = _view.Settings.SpeechVad
+            UseCuda = _view.Settings.UseCuda, SpeechVad = _view.Settings.SpeechVad,
+            RecognizeToSimplified = _view.Settings.RecognizeToSimplified
         };
         var previous = _liveTask;
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
@@ -508,7 +533,7 @@ public partial class MainWindow : Window
             _view.LiveRecognitionStatus = "边听边识别完成 · 已保存同名 LRC";
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (Current()) _view.LiveRecognitionStatus = "边听边识别未完成：" + ex.Message; }
+        catch (Exception ex) { Log.Error(ex, "Live recognition failed; audio={Audio}", track.FilePath); if (Current()) _view.LiveRecognitionStatus = "边听边识别未完成：" + ex.Message; }
         finally
         {
             if (ReferenceEquals(_liveCancellation, cancellation)) _liveCancellation = null;
@@ -571,7 +596,7 @@ public partial class MainWindow : Window
     private void ResetLyricsPosition_Click(object sender, RoutedEventArgs e)
     {
         _view.Settings.LyricLeft = null; _view.Settings.LyricTop = null;
-        _lyricsWindow?.Place(true); ScheduleSave();
+        _lyricsWindow?.Place(true); _lyricsWindow?.EnsureVisible(refreshDisplay: true); ScheduleSave();
     }
     private void BrowsePython_Click(object sender, RoutedEventArgs e)
     {
@@ -623,12 +648,13 @@ public partial class MainWindow : Window
             _view.Models = models;
             var selected = models.FirstOrDefault(m => m.DirectoryPath.Equals(previous, StringComparison.OrdinalIgnoreCase)) ?? models.FirstOrDefault(m => m.Id == previousId) ?? models.FirstOrDefault();
             _view.Settings.ModelPath = selected?.DirectoryPath ?? "";
+            Log.Information("Model catalog refreshed; root={Root}; count={Count}; selected={Selected}", root, models.Count, selected?.Id);
             ModelPicker.SetCurrentValue(Selector.SelectedValueProperty, selected?.DirectoryPath);
             if (selected is not null) _view.Settings.ModelId = selected.Id;
             _view.ModelSummary = $"已发现 {models.Count} 个完整本地模型 · 已排除仅英语模型，可选择多语言模型识别中文。";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        { _view.ModelSummary = "模型目录读取失败：" + ex.Message; }
+        { Log.Warning(ex, "Reading model catalog failed"); _view.ModelSummary = "模型目录读取失败：" + ex.Message; }
         finally { _refreshingModels = false; }
     }
 
@@ -645,7 +671,7 @@ public partial class MainWindow : Window
             _view.CurrentInfo = string.Join(" · ", parts);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
-        { if (request == _coverRequest) _view.Status = "封面无法读取，音频仍可继续播放：" + ex.Message; }
+        { Log.Warning(ex, "Reading audio cover failed; path={Path}", track.FilePath); if (request == _coverRequest) _view.Status = "封面无法读取，音频仍可继续播放：" + ex.Message; }
     }
 
     private async void InspectEnvironment_Click(object sender, RoutedEventArgs e)
@@ -744,6 +770,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Batch recognition interrupted");
             foreach (var item in items.Where(i => i.State is RecognitionState.Pending or RecognitionState.Running or RecognitionState.Paused)) { item.State = RecognitionState.Failed; item.Status = ex.Message; }
             _view.RecognitionStatus = "批量识别中断：" + ex.Message;
         }
@@ -758,10 +785,10 @@ public partial class MainWindow : Window
         if (_batchPause is null) return;
         try
         {
-            if (_batchPause.IsPaused) { _batchPause.Resume(); _view.RecognitionPaused = false; _view.RecognitionStatus = "继续识别，保留已完成进度。"; }
-            else { _batchPause.Pause(); _view.RecognitionPaused = true; _view.RecognitionStatus = "已请求暂停；当前计算片段结束后暂停，点击继续可接着识别。"; }
+            if (_batchPause.IsPaused) { _batchPause.Resume(); _view.RecognitionPaused = false; _view.RecognitionStatus = "继续识别，保留已完成进度。"; Log.Information("Batch recognition resume requested"); }
+            else { _batchPause.Pause(); _view.RecognitionPaused = true; _view.RecognitionStatus = "已请求暂停；当前计算片段结束后暂停，点击继续可接着识别。"; Log.Information("Batch recognition pause requested"); }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _view.RecognitionStatus = "暂停控制失败：" + ex.Message; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Error(ex, "Pause control failed"); _view.RecognitionStatus = "暂停控制失败：" + ex.Message; }
     }
     private void AttachGeneratedLyrics(string audio, string output)
     {
@@ -804,7 +831,7 @@ public partial class MainWindow : Window
             }
         }
         catch (OperationCanceledException) { _view.RecognitionStatus = "已取消识别，已有歌词文件未修改。"; }
-        catch (Exception ex) { _view.RecognitionStatus = "识别未完成：" + ex.Message; }
+        catch (Exception ex) { Log.Error(ex, "Recognition request failed; audio={Audio}; checkOnly={CheckOnly}", audio, audio is null); _view.RecognitionStatus = "识别未完成：" + ex.Message; }
         finally { _recognitionCancellation = null; _view.RecognitionBusy = false; }
     }
     private void CancelRecognition_Click(object sender, RoutedEventArgs e)
@@ -874,6 +901,7 @@ public partial class MainWindow : Window
         _exiting = true;
         _lifetime.Cancel();
         _clock.Stop(); _saveTimer.Stop();
+        await _plugins.StopAsync();
         _recognitionCancellation?.Cancel();
         if (_recognitionTask is not null) await _recognitionTask;
         CancelLiveRecognition();
@@ -896,6 +924,7 @@ public partial class MainWindow : Window
     {
         if (_disposed) return;
         _disposed = true;
+        _plugins.Dispose();
         _lifetime.Cancel();
         CancelLiveRecognition();
         _clock.Stop(); _saveTimer.Stop(); _audio.Dispose();

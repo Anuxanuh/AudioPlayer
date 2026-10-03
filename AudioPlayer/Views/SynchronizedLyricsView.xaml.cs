@@ -22,6 +22,7 @@ public partial class SynchronizedLyricsView : UserControl
     private readonly DispatcherTimer _resumeTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private LyricRow[] _rows = Array.Empty<LyricRow>();
     private bool _centerQueued;
+    public event Action<TimeSpan>? SeekRequested;
 
     public SynchronizedLyricsView()
     {
@@ -103,6 +104,15 @@ public partial class SynchronizedLyricsView : UserControl
         QueueCenter();
     }
     private void Resume_Click(object sender, RoutedEventArgs e) => ResumeFollowing();
+    private void Lyric_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: LyricRow row })
+        {
+            SeekRequested?.Invoke(row.Time);
+            ResumeFollowing();
+            e.Handled = true;
+        }
+    }
     private void Lyrics_MouseWheel(object sender, MouseWheelEventArgs e)
     {
         PauseFollowing();
@@ -132,6 +142,7 @@ public partial class SynchronizedLyricsView : UserControl
 
     public sealed class LyricRow(LyricLine line) : ObservableObject
     {
+        public TimeSpan Time => line.Time;
         public string DisplayText => string.IsNullOrWhiteSpace(line.Text) ? "♪" : line.Text;
         public string Timestamp => $"{(int)line.Time.TotalMinutes:00}:{line.Time.Seconds:00}";
         private bool _isCurrent;

@@ -25,21 +25,25 @@ public sealed class AudioService : IDisposable
     public void Open(string path)
     {
         Stop();
+        Log.Information("Opening audio {Audio}; rate={Rate}", path, _playbackRate);
         var player = new MediaPlayer { Volume = _volume };
         _player = player;
         player.MediaOpened += (_, _) =>
         {
             if (_player != player) return;
+            Log.Information("Audio opened; duration={Duration}; rate={Rate}", Duration, _playbackRate);
             IsReady = true; IsPlaying = true; player.SpeedRatio = _playbackRate; player.Play(); Opened?.Invoke();
         };
         player.MediaEnded += (_, _) =>
         {
             if (_player != player) return;
+            Log.Information("Audio ended");
             IsPlaying = false; _ended = true; Ended?.Invoke();
         };
         player.MediaFailed += (_, args) =>
         {
             if (_player != player) return;
+            Log.Error(args.ErrorException, "Audio decoder failed for {Audio}", path);
             Stop(); Failed?.Invoke(args.ErrorException.Message);
         };
         player.Open(new Uri(Path.GetFullPath(path), UriKind.Absolute));
@@ -51,6 +55,7 @@ public sealed class AudioService : IDisposable
         if (IsPlaying) _player.Pause();
         else { if (_ended || (Duration > TimeSpan.Zero && Position >= Duration)) _player.Position = TimeSpan.Zero; _ended = false; _player.Play(); }
         IsPlaying = !IsPlaying;
+        Log.Information("Playback state changed; playing={Playing}; position={Position}", IsPlaying, Position);
     }
 
     public void Seek(double seconds)

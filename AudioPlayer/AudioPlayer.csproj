@@ -12,7 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../AudioPlayer.Plugin.Abstractions/AudioPlayer.Plugin.Abstractions.csproj" />
     <PackageReference Include="TagLibSharp" Version="2.3.0" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <Resource Include="Assets/player.ico" />
     <Resource Include="Assets/player.png" />
     <Content Include="..\recognition\transcribe.py" Link="recognition\transcribe.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

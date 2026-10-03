@@ -1,9 +1,67 @@
-**/bin/
-**/obj/
+# .NET build outputs and Visual Studio user settings
+bin/
+obj/
 .vs/
-.venv/
-models/
-runtime/
-artifacts/
-**/__pycache__/
 *.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.pubxml.user
+*.dbmdl
+*.jfm
+
+# Python environments, bytecode, and tool caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+*.egg-info/
+
+# Test results and coverage reports
+TestResults/
+.coverage
+.coverage.*
+htmlcov/
+/coverage/
+coverage.xml
+
+# Downloaded model weights, bundled runtimes, and packaging outputs.
+# Anchor these to the root: AudioPlayer/Models/ contains application source.
+/models/
+/runtime/
+/python/
+/artifacts/
+.cache/
+.downloads/
+.backups/
+
+# Local player settings, playlists, logs, and personal audio
+/data/
+/logs/
+/Music/
+/AudioPlayer/data/
+/AudioPlayer/logs/
+*.log
+
+# Local environment configuration (keep shareable examples)
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Temporary files, editor backups, and OS metadata
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini

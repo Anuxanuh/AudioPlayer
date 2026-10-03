@@ -15,6 +15,7 @@ public sealed class EnvironmentInspectionService
 {
     public async Task<EnvironmentReport> InspectAsync(string pythonPath, CancellationToken token)
     {
+        Log.Information("Inspecting local recognition environment; python={Python}", pythonPath);
         var start = new ProcessStartInfo
         {
             FileName = pythonPath, UseShellExecute = false, CreateNoWindow = true,
@@ -42,12 +43,14 @@ public sealed class EnvironmentInspectionService
             string json = await output, diagnostic = await error;
             timeout.Token.ThrowIfCancellationRequested();
             if (process.ExitCode != 0) throw new InvalidOperationException($"检测进程退出代码 {process.ExitCode}。" + (diagnostic.Length > 5000 ? diagnostic[^5000..] : diagnostic));
-            return JsonSerializer.Deserialize<EnvironmentReport>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new JsonException("无检测结果");
+            var report = JsonSerializer.Deserialize<EnvironmentReport>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new JsonException("无检测结果");
+            Log.Information("Environment inspection completed; cpuReady={CpuReady}; cudaReady={CudaReady}; checks={@Checks}", report.CpuReady, report.CudaReady, report.Items);
+            return report;
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
-        { return Error("检测超时；请检查 Python 与驱动是否可以正常加载。"); }
+        { Log.Warning("Environment inspection timed out"); return Error("检测超时；请检查 Python 与驱动是否可以正常加载。"); }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or JsonException or IOException)
-        { return Error("环境检测失败：" + ex.Message); }
+        { Log.Error(ex, "Environment inspection failed"); return Error("环境检测失败：" + ex.Message); }
     }
     private static EnvironmentReport Error(string message) => new(new[] { new EnvironmentCheck("Python / 检测程序", "error", message) }, false, false, "请检查配置的 Python 路径，或重新解压完整便携包。");
 }

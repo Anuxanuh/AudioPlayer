@@ -22,7 +22,13 @@ public sealed class BatchTranscriptionService(string? scriptPath = null)
         var outputs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var finished = new HashSet<int>();
         int completed = 0, skipped = 0, failed = 0;
-        void Notify(int index, RecognitionState state, string message, double percent = 100) => progress(new(index, state, percent, message));
+        void Notify(int index, RecognitionState state, string message, double percent = 100)
+        {
+            if (state is RecognitionState.Failed) Log.Warning("Batch item failed; index={Index}; message={Message}", index, message);
+            else if (state is RecognitionState.Completed or RecognitionState.Skipped or RecognitionState.Paused)
+                Log.Information("Batch item state; index={Index}; state={State}; message={Message}", index, state, message);
+            progress(new(index, state, percent, message));
+        }
         for (int index = 0; index < audioPaths.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -53,11 +59,14 @@ public sealed class BatchTranscriptionService(string? scriptPath = null)
         start.ArgumentList.Add("--workers"); start.ArgumentList.Add(Math.Min(workers, jobs.Count).ToString());
         if (pauseControl is not null) { start.ArgumentList.Add("--pause-file"); start.ArgumentList.Add(pauseControl.SignalPath); }
         if (vad) start.ArgumentList.Add("--vad");
+        if (settings.RecognizeToSimplified) start.ArgumentList.Add("--simplified");
         start.Environment["PYTHONUTF8"] = "1";
         start.Environment["HF_HUB_OFFLINE"] = "1";
         start.Environment["TRANSFORMERS_OFFLINE"] = "1";
         using var process = new Process { StartInfo = start };
         var error = new StringBuilder();
+        var watch = Stopwatch.StartNew();
+        Log.Information("Batch recognition starting; jobs={Jobs}; workers={Workers}; model={Model}; cuda={Cuda}; simplified={Simplified}; python={Python}", jobs.Count, Math.Min(workers, jobs.Count), model, cuda, settings.RecognizeToSimplified, python);
         var byIndex = jobs.ToDictionary(j => j.Index);
         async Task ReadEventsAsync()
         {
@@ -121,8 +130,11 @@ public sealed class BatchTranscriptionService(string? scriptPath = null)
             if (process.ExitCode != 0) throw new InvalidOperationException(error.Length > 0 ? error.ToString().Trim() : $"识别进程退出，代码 {process.ExitCode}。");
             foreach (var job in jobs.Where(j => !finished.Contains(j.Index)))
             { failed++; Notify(job.Index, RecognitionState.Failed, "识别进程未返回该文件的完成结果"); }
+            Log.Information("Batch recognition completed; completed={Completed}; skipped={Skipped}; failed={Failed}; elapsed={Elapsed}", completed, skipped, failed, watch.Elapsed);
             return new(completed, skipped, failed);
         }
+        catch (OperationCanceledException) { Log.Information("Batch recognition cancelled; completed={Completed}; elapsed={Elapsed}", completed, watch.Elapsed); throw; }
+        catch (Exception ex) { Log.Error(ex, "Batch recognition failed; completed={Completed}; elapsed={Elapsed}; diagnostic={Diagnostic}", completed, watch.Elapsed, error.ToString()); throw; }
         finally
         {
             Kill();

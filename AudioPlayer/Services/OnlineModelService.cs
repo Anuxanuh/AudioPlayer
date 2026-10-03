@@ -41,13 +41,17 @@ public sealed class OnlineModelService
         }
         try
         {
+            Log.Information("Online model operation starting; model={Model}; root={Root}", downloadId ?? "catalog", modelRoot);
             token.ThrowIfCancellationRequested();
             process.Start();
             using var registration = token.Register(Kill);
             await Task.WhenAll(ReadEvents(), ReadErrors(), process.WaitForExitAsync());
             token.ThrowIfCancellationRequested();
             if (process.ExitCode != 0) throw new InvalidOperationException(errors.Length == 0 ? $"模型操作退出代码 {process.ExitCode}" : errors.ToString().Trim());
+            Log.Information("Online model operation completed; model={Model}", downloadId ?? "catalog");
         }
+        catch (OperationCanceledException) { Log.Information("Online model operation cancelled; model={Model}", downloadId ?? "catalog"); throw; }
+        catch (Exception ex) { Log.Error(ex, "Online model operation failed; model={Model}; diagnostic={Diagnostic}", downloadId ?? "catalog", errors.ToString()); throw; }
         finally { Kill(); }
     }
 }

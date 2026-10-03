@@ -27,6 +27,7 @@ public sealed class TranscriptionService
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
         };
         foreach (string argument in new[] { "-u", script, "--model", settings.ModelPath, "--device", settings.UseCuda ? "cuda" : "cpu" }) start.ArgumentList.Add(argument);
+        if (settings.RecognizeToSimplified) start.ArgumentList.Add("--simplified");
         if (audio is null) start.ArgumentList.Add("--check");
         else
         {
@@ -39,6 +40,9 @@ public sealed class TranscriptionService
         start.Environment["TRANSFORMERS_OFFLINE"] = "1";
         using var process = new Process { StartInfo = start };
         var error = new StringBuilder();
+        var watch = Stopwatch.StartNew();
+        Log.Information("Recognition starting; audio={Audio}; model={Model}; device={Device}; language={Language}; stream={Stream}; simplified={Simplified}; python={Python}",
+            audio, settings.ModelPath, settings.UseCuda ? "cuda" : "cpu", settings.Language, onSegment is not null, settings.RecognizeToSimplified, settings.PythonPath);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -58,7 +62,10 @@ public sealed class TranscriptionService
                 if (!overwrite && File.Exists(output)) File.Delete(temporary);
                 else File.Move(temporary, output!, overwrite);
             }
+            Log.Information("Recognition completed; output={Output}; elapsed={Elapsed}", output, watch.Elapsed);
         }
+        catch (OperationCanceledException) { Log.Information("Recognition cancelled; elapsed={Elapsed}", watch.Elapsed); throw; }
+        catch (Exception ex) { Log.Error(ex, "Recognition failed; elapsed={Elapsed}; diagnostic={Diagnostic}", watch.Elapsed, error.ToString()); throw; }
         finally
         {
             Kill(process);

@@ -65,9 +65,13 @@ tiny、base、small、medium、large-v1、large-v2、large-v3、large-v3-turbo�
 
 主页面采用左侧导航与宽播放列表，底部为持续可用的播放控制。点击底部封面，以抽屉动画向上展开大封面和完整歌词；点击右上角向下箭头、再次点击底部封面或按 Esc 收起。当前歌词高亮并平滑居中跟随；可使用鼠标滚轮、滚动条或方向键上下翻阅。翻阅时继续更新高亮但不抢回滚动位置；停止操作 **5 秒** 后自动回到当前句，也可点击“回到当前歌词”立即恢复。新识别片段追加时保留手动翻阅位置，切换歌曲时重置，无歌词时显示提示。
 
+**点击任意一行歌词即可跳转到该句的音频时间，并恢复自动跟随。** 跳转会同时更新进度条和桌面歌词，考虑 LRC 自带偏移与设置中的歌词偏移；播放时继续播放，暂停时保持暂停。边听边识别已经生成的歌词也可以点击。
+
 在歌词抽屉或设置里开启“边听边识别”，当前音频没有同名或已关联的 LRC 时自动开始本地识别。识别出的片段按原音频时间显示在歌词抽屉和桌面歌词中，完整结果写入同目录同名 LRC。首段字幕需要等待模型加载和计算，模型速度不足时字幕可能落后于播放；倍速不会改变识别输出的时间戳。已有 LRC 不重复识别，识别期间手动放入的 LRC 也不会被覆盖。切歌或关闭该选项会取消当前自动识别；批量队列正在处理同一音频时，播放界面使用该任务的字幕。该开关默认关闭。
 
 默认关闭窗口时隐藏到托盘继续播放；双击恢复，右键可控制播放或退出。设置中可以改为直接退出。
+
+桌面歌词每 2 秒检查原生窗口的隐藏、最小化、置顶和屏幕位置，异常时恢复；显示器、分辨率、DPI 变化，以及休眠恢复、解锁和远程桌面重连时重新布局。位置按实际显示器工作区约束，避免落入多屏间隙或已断开的屏幕；透明歌词窗口单独使用软件渲染，减少显卡驱动相关的重绘问题。恢复保留锁定穿透且不抢键盘焦点，主动关闭桌面歌词后不会自动打开。已模拟验证这些恢复路径，对其他电脑上未知触发原因的消失问题仍需结合日志确认。
 
 再次双击 exe 时，第二个进程会唤回已有窗口并退出，支持从托盘隐藏或最小化状态恢复。带音频路径启动时，把文件传给原窗口；单例覆盖同一用户会话中的不同程序副本。
 
@@ -88,7 +92,29 @@ tiny、base、small、medium、large-v1、large-v2、large-v3、large-v3-turbo�
 
 一个批次只启动一个 Python 进程、只加载一次模型，多线程共享模型进行识别；“并发任务”可选 1–4，默认 2。并发会增加内存／显存占用，大模型或显存较小时可降低到 1。点击“暂停识别”，正在计算的片段结束后暂停，保留模型、音频迭代器和已完成的片段；点击“继续识别”从原进度接着处理，不重新加载或从头识别。暂停期间仍占用模型内存。暂停状态只保留在当前程序进程中；“取消识别”或退出程序会终止未完成任务，再次开始需重新识别未完成文件，已生成的 LRC 默认跳过。
 
+设置 → 离线识别引擎中的 **“识别结果自动转为简体中文”默认开启**，使用随包附带的 OpenCC 本地字典，不联网。转换同时应用于实时字幕、单文件和多线程批量识别的新 LRC；关闭后保留识别原文。修改从下一次识别任务生效，不修改现有 LRC、音频名称或时间戳。环境检测也会检查 OpenCC 字典是否可用。
+
 识别强制只读本地模型，无云 API；只有主动打开在线模型管理窗口或运行下载脚本时才联网。本机 CPU 并发识别已通过真实音频测试；GPU 可用性以运行电脑当时的环境检测与模型检查结果为准。
+
+## 运行日志
+
+使用 Serilog，将 UTF-8 日志写入 **exe 同目录的 `logs` 文件夹**，例如 `logs/AudioPlayer-2026100221.log`。按本机时间每小时一个文件，同一小时再次启动继续追加；自动删除超过 7 天的应用日志，不设默认 31 个文件的数量上限。启动写入和每小时轮转时执行清理，空闲运行期间也有每小时一条状态记录；程序未运行时不会执行删除。
+
+日志记录版本、系统、启动退出、播放与歌词跳转、识别任务和耗时、暂停取消、模型下载、环境检测、桌面歌词恢复，以及异常堆栈。包含本地文件路径和模型配置，不逐句记录识别文字或每帧播放进度。若再次遇到桌面歌词消失，可提供发生时间及对应小时的日志，便于定位。
+
+## 插件与 Bilibili 下载
+
+启动时扫描 `plugins/*/plugin.json`，只加载设置中启用的插件。新插件默认关闭；在“设置 → 插件”更改开关后，从托盘右键退出并重新启动生效。清单不合法、API 不兼容或程序集加载失败会显示原因并写日志，不阻止其他插件加载。已启用插件的页面追加到左侧导航。
+
+附带的 Bilibili 下载插件使用官方二维码生成／轮询接口，打开二维码窗口后用 Bilibili App 扫码并确认。支持二维码刷新、过期提示和关闭取消，无内嵌浏览器。Cookie 使用标准 CookieJar 解析并由 Windows 当前用户加密存入 `data/plugins/bilibili/session.bin`，通过子进程标准输入传递；不写入命令行、日志或交付包。移动到其他电脑／用户后需重新扫码，退出登录删除保存的凭据。
+
+输入 BV 号或完整视频链接，读取多 P 列表（默认全选），选择分 P、清晰度、保存目录及是否带字幕。默认只下载 M4A 音频；勾选视频后下载音视频流，用 FFmpeg 合并 MP4。清晰度按账号可访问的流列出，其他分 P 不支持所选清晰度时明确失败，不静默降级。字幕保存为 SRT，并优先用中文字幕生成同名 LRC；没有可获取字幕时提示。支持取消、保留下载片段续传、同名已完成文件跳过和单项失败继续。默认输出 `Downloads/Bilibili`。
+
+插件依赖独立保存在 `plugins/bilibili`，包括 yt-dlp、qrcode 和 FFmpeg；不会改变离线识别依赖。重建时先运行 `packaging/prepare-bilibili.ps1`，再运行 `packaging/build-portable.ps1`（会自动构建插件）。开发运行可用 `packaging/build-plugins.ps1 -OutputDirectory AudioPlayer/bin/Release/net10.0-windows` 部署到开发输出目录。
+
+插件开发使用 `AudioPlayer.Plugin.Abstractions` 的 API 1：实现 `IPlayerPlugin.CreatePage(PluginContext)`、`StopAsync()` 和 `Dispose()`。页面在 WPF UI 线程创建；耗时操作需异步执行，退出时停止自己的工作并响应 `ShutdownToken`。`PluginContext` 提供独立数据目录、Python 路径和日志回调。清单包含 `id`、`name`、`version`、`description`、`assembly`（同目录 DLL 文件名）、`entryType` 和 `apiVersion: 1`，可参考 `Plugins/Bilibili/plugin.json`。插件与播放器拥有相同的本机权限，应仅启用可信来源。修改程序集后重启加载。
+
+本次插件验证：22 组 C# 集成测试通过，包含插件开关持久化、默认关闭、清单错误隔离、动态加载、加密凭据、真实二维码获取／刷新／取消和现有播放器回归；7 项插件 Python 测试通过，覆盖 Cookie 多响应头与 Expires、手机确认、过期、精确清晰度、分 P 选择、字幕转换和已有文件保护。真实公开 23 P 视频解析、音频下载和视频下载合并成功，ffprobe 确认 MP4 包含 H.264 视频与 AAC 音轨。账号扫码确认后的会员清晰度和受登录限制的字幕仍需使用用户账号验证。
 
 ## 开发与重建
 
@@ -117,7 +143,11 @@ dotnet run --project AudioPlayer/AudioPlayer.csproj -c Release
 
 `prepare-python.ps1` 可通过 `-BootstrapPython` 指定用于 pip 的开发 Python。`build-portable.ps1` 会自动寻找 Visual Studio 的可再发行 CRT 目录，也可用 `-VcCrtDirectory` 指定。打包脚本仅复制目录清单中的模型，不复制下载缓存、不清空既有数据。完整重建建议留出约 30 GiB 空间用于源模型和发布副本。旧开发目录可运行 `packaging/remove-english-models.ps1` 清理指定的仅英语模型文件夹。
 
+需要无模型、无用户数据的交付压缩包时，在完整发布后运行 `packaging/build-delivery.ps1`。它排除根目录的 `models`、`data`、`logs` 及缓存，保留 Python 依赖内部所需的资源和字典，生成 ZIP 与 SHA-256 校验文件；不会修改原便携目录。交付版附带独立使用说明，首次识别前在程序内下载或选择模型。可用 `packaging/test-delivery.ps1 -ZipPath <ZIP路径>` 解压到中文路径，在隔离开发机环境后验证运行时、字典和日志。
+
 ## 测试与便携自检
+
+Bilibili 插件 1.1.0 支持 Ctrl 切换勾选、Shift 按起点状态连续勾选／取消，以及全列表反选。Python 使用 `-I -X utf8 -u` 和显式 UTF-8 标准流，避免隔离启动忽略编码环境变量后在 GBK Windows 上出现乱码。独立插件回归可执行 `dotnet AudioPlayer.Tests/bin/Release/net10.0-windows/AudioPlayer.Tests.dll --plugins --bili-encoding --bili-selection` 和 `.venv/Scripts/python.exe -m unittest discover -s Plugins/Bilibili -p 'test_*.py' -v`，覆盖实际 WPF 勾选事件、虚拟化长列表范围与反选、跨进程 Unicode 文本，以及模拟 GBK／西文系统的请求和响应。
 
 ```powershell
 dotnet run --project AudioPlayer.Tests -c Release -- --render --media --python runtime/python/python.exe --offline-model models/faster-whisper-tiny --speech artifacts/offline-speech.wav --native
@@ -142,14 +172,18 @@ dotnet run --project AudioPlayer.Tests -c Release -- --render --media --python r
 
 可运行 `.\packaging\test-portable.ps1` 执行整包移动验证：将发布目录暂时移到带中文和空格的新路径，清除子进程对开发机 PATH、Python 和 .NET 路径的依赖后，执行真实离线识别；最后恢复目录，报告保存在 `artifacts/portable-relocation-check.json`。运行此检查前请退出发布版播放器。
 
-2026-10-02 本次验证：Release 构建 0 警告、0 错误；18 组集成测试通过，包括左侧导航、歌词抽屉动画与 Esc、最小窗口布局、运行中模型刷新、实际倍速播放、暂停／继续与暂停时取消、实时字幕与切歌保护、真实双文件 CPU 并发识别、单例和托盘。Python 10 项单元测试通过，包含共享模型的多线程并发及暂停保留迭代器进度。在线目录查询与真实 tiny 下载校验在前次功能交付时通过。本次便携包还使用 `test-portable.ps1` 验证中文/空格路径移动及真实识别；尚未在另一台全新 Windows 电脑上验证。
+2026-10-02 本次验证：Release 构建 0 警告、0 错误；20 组集成测试通过，包括左侧导航、歌词抽屉、最小窗口布局、运行中模型刷新、实际倍速播放、识别暂停／继续、实时字幕与切歌保护、真实双文件 CPU 并发识别、单例和托盘，以及歌词点击跳转与偏移、简体开关、日志七天保留和共享写入、原生桌面歌词隐藏／置顶／屏外／最小化恢复与无焦点抢占。Python 12 项单元测试通过，包含共享模型多线程、暂停保留进度、真实 OpenCC 字典转换及单文件／批量参数传递。在线目录查询与真实 tiny 下载校验在前次功能交付时通过。尚未在另一台全新 Windows 电脑上验证。
+
+完整便携包已通过中文／空格路径移动和真实 CPU 识别验证。无模型交付 ZIP 已重新解压到中文路径，在清除开发机 .NET／Python 路径后通过运行时与 OpenCC 自检，并确认无模型、无预置用户数据和日志，运行时可正常生成 Serilog 启动／退出日志。
 
 ## 主要文件
 
 - `AudioPlayer/App.xaml`：官方 Fluent 资源。
 - `AudioPlayer/MainWindow.xaml`：主界面、封面、图标按钮和模型下拉框。
 - `AudioPlayer/Views/EnvironmentWindow.*`：检测结果与官网链接。
-- `AudioPlayer/Views/SynchronizedLyricsView.*`：完整歌词、高亮、平滑跟随与闲置恢复。
+- `AudioPlayer/Views/SynchronizedLyricsView.*`：完整歌词、点击跳转、高亮、平滑跟随与闲置恢复。
+- `AudioPlayer/Views/LyricsWindow.xaml.cs`、`Services/DesktopLyricsPlacement.cs`：桌面歌词布局、屏幕约束与窗口恢复。
+- `AudioPlayer/Services/AppLogging.cs`：Serilog 小时日志、七天保留与退出刷新。
 - `AudioPlayer/Services/CoverArtService.cs`：音频标签及封面。
 - `AudioPlayer/Services/PortablePaths.cs`、`StateStore.cs`：便携路径与配置。
 - `AudioPlayer/Services/BatchTranscriptionService.cs`：批量识别进程、进度与输出文件保护。

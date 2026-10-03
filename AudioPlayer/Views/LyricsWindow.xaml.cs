@@ -5,13 +5,20 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using AudioPlayer.Models;
+using AudioPlayer.Services;
+using Microsoft.Win32;
+using Forms = System.Windows.Forms;
 
 namespace AudioPlayer.Views;
 
 public partial class LyricsWindow : Window
 {
     private readonly PlayerSettings _settings;
+    private readonly DispatcherTimer _visibilityTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(2) };
+    private HwndSource? _source;
+    private bool _closed, _recovering, _dragging, _recoveryQueued;
     private bool _placing;
     private bool _vertical;
     private string _text = "声屿 · 桌面歌词";
@@ -21,6 +28,20 @@ public partial class LyricsWindow : Window
         _settings = settings;
         InitializeComponent();
         ApplySettings();
+        _visibilityTimer.Tick += (_, _) => EnsureVisible();
+        Loaded += (_, _) => { _visibilityTimer.Start(); EnsureVisible(); };
+        Closed += (_, _) =>
+        {
+            _closed = true; _visibilityTimer.Stop();
+            Log.Information("Desktop lyrics window closed; enabled={Enabled}", _settings.DesktopLyrics);
+            if (_source is not null)
+            {
+                _source.RemoveHook(WindowMessage);
+                SystemEvents.DisplaySettingsChanged -= DisplayChanged;
+                SystemEvents.PowerModeChanged -= PowerChanged;
+                SystemEvents.SessionSwitch -= SessionChanged;
+            }
+        };
     }
     public void SetText(string text)
     {
@@ -65,28 +86,142 @@ public partial class LyricsWindow : Window
             });
         }
     }
-    private double VerticalHeight => Math.Min(640, Math.Max(160, SystemParameters.WorkArea.Height - 60));
+    private IReadOnlyList<Rect> WorkAreas()
+    {
+        var transform = _source?.CompositionTarget?.TransformFromDevice;
+        if (transform is null) return new[] { SystemParameters.WorkArea };
+        return Forms.Screen.AllScreens.Select(s =>
+        {
+            var a = s.WorkingArea;
+            return Rect.Transform(new Rect(a.Left, a.Top, a.Width, a.Height), transform.Value);
+        }).ToArray();
+    }
+    private Rect CurrentWorkArea
+    {
+        get
+        {
+            var areas = WorkAreas();
+            double left = _settings.LyricLeft is double x && double.IsFinite(x) ? x : SystemParameters.WorkArea.Left;
+            double top = _settings.LyricTop is double y && double.IsFinite(y) ? y : SystemParameters.WorkArea.Top;
+            var position = DesktopLyricsPlacement.Constrain(new Rect(left, top, Math.Max(1, Width), Math.Max(1, Height)), areas);
+            return areas.FirstOrDefault(a => a.Contains(position), SystemParameters.WorkArea);
+        }
+    }
+    private double VerticalHeight => Math.Min(640, Math.Max(160, CurrentWorkArea.Height - 60));
     public void Place(bool reset = false)
     {
+        if (_placing || _closed) return;
         _placing = true;
-        Height = _vertical ? VerticalHeight : Math.Min(180, SystemParameters.WorkArea.Height);
-        Width = _vertical ? Math.Min(Math.Max(150, VerticalColumns.Children.Count * (_settings.FontSize * 1.25 + 12) + 36), SystemParameters.WorkArea.Width) : Math.Min(920, SystemParameters.WorkArea.Width);
-        double defaultLeft = _vertical ? SystemParameters.WorkArea.Right - Width - 30 : SystemParameters.WorkArea.Left + (SystemParameters.WorkArea.Width - Width) / 2;
-        double defaultTop = _vertical ? SystemParameters.WorkArea.Top + (SystemParameters.WorkArea.Height - Height) / 2 : SystemParameters.WorkArea.Bottom - Height - 30;
-        double left = !reset && _settings.LyricLeft is double x && double.IsFinite(x) ? x : defaultLeft;
-        double top = !reset && _settings.LyricTop is double y && double.IsFinite(y) ? y : defaultTop;
-        Left = Math.Clamp(left, SystemParameters.VirtualScreenLeft, Math.Max(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - Width));
-        Top = Math.Clamp(top, SystemParameters.VirtualScreenTop, Math.Max(SystemParameters.VirtualScreenTop, SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - Height));
-        _placing = false;
-        SavePosition();
+        try
+        {
+            Rect area = reset ? SystemParameters.WorkArea : CurrentWorkArea;
+            Height = _vertical ? Math.Min(640, Math.Max(160, area.Height - 60)) : Math.Min(180, area.Height);
+            Width = _vertical ? Math.Min(Math.Max(150, VerticalColumns.Children.Count * (_settings.FontSize * 1.25 + 12) + 36), area.Width) : Math.Min(920, area.Width);
+            double defaultLeft = _vertical ? area.Right - Width - 30 : area.Left + (area.Width - Width) / 2;
+            double defaultTop = _vertical ? area.Top + (area.Height - Height) / 2 : area.Bottom - Height - 30;
+            double left = !reset && _settings.LyricLeft is double x && double.IsFinite(x) ? x : defaultLeft;
+            double top = !reset && _settings.LyricTop is double y && double.IsFinite(y) ? y : defaultTop;
+            var bounds = DesktopLyricsPlacement.Constrain(new Rect(left, top, Width, Height), reset ? new[] { area } : WorkAreas());
+            Left = bounds.Left; Top = bounds.Top; Width = bounds.Width; Height = bounds.Height;
+        }
+        finally { _placing = false; }
+        if (_source is not null) SavePosition();
     }
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (!_settings.LockLyrics && e.ButtonState == MouseButtonState.Pressed) DragMove();
+        if (!_settings.LockLyrics && e.ButtonState == MouseButtonState.Pressed)
+        {
+            _dragging = true;
+            try { DragMove(); }
+            finally { _dragging = false; Place(); }
+        }
     }
     private void Window_LocationChanged(object? sender, EventArgs e) { if (!_placing && IsLoaded) SavePosition(); }
     private void SavePosition() { _settings.LyricLeft = Left; _settings.LyricTop = Top; PositionSaved?.Invoke(); }
-    private void Window_SourceInitialized(object? sender, EventArgs e) => ApplyMouseMode();
+    private void Window_SourceInitialized(object? sender, EventArgs e)
+    {
+        _source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        if (_source is not null)
+        {
+            // This small transparent overlay uses software rendering to avoid driver/RDP redraw loss.
+            _source.CompositionTarget.RenderMode = RenderMode.SoftwareOnly;
+            _source.AddHook(WindowMessage);
+            SystemEvents.DisplaySettingsChanged += DisplayChanged;
+            SystemEvents.PowerModeChanged += PowerChanged;
+            SystemEvents.SessionSwitch += SessionChanged;
+        }
+        Place(); ApplyMouseMode();
+    }
+
+    public void EnsureVisible(bool refreshDisplay = false)
+    {
+        if (_closed || _recovering || _dragging || !_settings.DesktopLyrics) return;
+        _recovering = true;
+        try
+        {
+            bool recovered = !IsVisible || WindowState != WindowState.Normal;
+            if (WindowState != WindowState.Normal) WindowState = WindowState.Normal;
+            if (!IsVisible) Show();
+            nint handle = new WindowInteropHelper(this).Handle;
+            if (handle == 0) return;
+            recovered |= !IsWindowVisible(handle) || IsIconic(handle) || (GetWindowLongPtr(handle, -20).ToInt64() & 0x8) == 0;
+            if (IsIconic(handle)) ShowWindow(handle, 4); // SW_SHOWNOACTIVATE
+            if (refreshDisplay) { BuildVerticalText(); Place(); }
+            recovered |= EnsureNativeBounds(handle);
+            ApplyMouseMode();
+            Topmost = true;
+            // WPF's IsVisible/Topmost can stay true after native shell operations hide/reorder an HWND.
+            // Restore the HWND without activating it or changing keyboard focus.
+            SetWindowPos(handle, new nint(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040 | 0x0200);
+            if (recovered || refreshDisplay)
+            {
+                LyricText.InvalidateVisual(); VerticalColumns.InvalidateVisual(); InvalidateVisual();
+                LogRecovery(refreshDisplay ? "display/session refresh" : "hidden/minimized/off-screen/native topmost recovery");
+            }
+        }
+        finally { _recovering = false; }
+    }
+    private bool EnsureNativeBounds(nint handle)
+    {
+        if (!GetWindowRect(handle, out var native) || native.Right <= native.Left || native.Bottom <= native.Top) return false;
+        var desired = new Rect(native.Left, native.Top, native.Right - native.Left, native.Bottom - native.Top);
+        // Compare HWND and monitor rectangles in the same native coordinate space, also on mixed-DPI screens.
+        var areas = Forms.Screen.AllScreens.Select(s => new Rect(s.WorkingArea.Left, s.WorkingArea.Top, s.WorkingArea.Width, s.WorkingArea.Height)).ToArray();
+        var bounds = DesktopLyricsPlacement.Constrain(desired, areas);
+        if (bounds == desired) return false;
+        SetWindowPos(handle, 0, (int)bounds.X, (int)bounds.Y, (int)bounds.Width, (int)bounds.Height, 0x0004 | 0x0010 | 0x0200);
+        SavePosition();
+        return true;
+    }
+    private void QueueRecovery()
+    {
+        if (_closed || Dispatcher.HasShutdownStarted) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (_closed || _recoveryQueued) return;
+            _recoveryQueued = true;
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            { _recoveryQueued = false; EnsureVisible(refreshDisplay: true); }));
+        }));
+    }
+    private nint WindowMessage(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
+    {
+        if (message is 0x007E or 0x001A or 0x02E0) QueueRecovery(); // display/work area/DPI
+        return 0;
+    }
+    private void DisplayChanged(object? sender, EventArgs e) => QueueRecovery();
+    private void PowerChanged(object sender, PowerModeChangedEventArgs e) { if (e.Mode == PowerModes.Resume) QueueRecovery(); }
+    private void SessionChanged(object sender, SessionSwitchEventArgs e)
+    {
+        if (e.Reason is SessionSwitchReason.SessionUnlock or SessionSwitchReason.RemoteConnect or SessionSwitchReason.ConsoleConnect) QueueRecovery();
+    }
+    private void LogRecovery(string reason)
+    {
+        Log.Information("Desktop lyrics recovered; reason={Reason}; bounds={Left},{Top},{Width},{Height}; dpi={Dpi}; monitors={Monitors}; locked={Locked}; nativeVisible={Visible}; software=true",
+            reason, Left, Top, Width, Height, VisualTreeHelper.GetDpi(this).PixelsPerInchX,
+            Forms.Screen.AllScreens.Select(s => s.WorkingArea.ToString()).ToArray(), _settings.LockLyrics,
+            IsWindowVisible(new WindowInteropHelper(this).Handle));
+    }
     private void ApplyMouseMode()
     {
         nint handle = new WindowInteropHelper(this).Handle;
@@ -103,4 +238,10 @@ public partial class LyricsWindow : Window
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern nint SetWindowLongPtr64(nint hwnd, int index, nint value);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowLong32(nint hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongW")] private static extern int SetWindowLong32(nint hwnd, int index, int value);
+    [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(nint hwnd, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint hwnd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(nint hwnd);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(nint hwnd, int command);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int width, int height, uint flags);
 }

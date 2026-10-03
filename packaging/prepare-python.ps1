@@ -20,6 +20,6 @@ import site
 $packages = Join-Path $Destination 'Lib/site-packages'
 & $BootstrapPython -m pip install --only-binary=:all: --platform win_amd64 --python-version 3.13 --implementation cp --abi cp313 --target $packages -r (Join-Path $repo 'recognition/requirements-lock.txt') --upgrade --no-compile
 if ($LASTEXITCODE -ne 0) { throw '安装便携 Python 依赖失败。' }
-& (Join-Path $Destination 'python.exe') -I -c 'import sys, faster_whisper, av, ctranslate2; print(sys.version); print("Portable Python imports OK")'
+& (Join-Path $Destination 'python.exe') -I -c 'import sys, faster_whisper, av, ctranslate2; from opencc import OpenCC; assert OpenCC("t2s").convert("繁體中文") == "繁体中文"; print(sys.version); print("Portable Python and OpenCC imports OK")'
 if ($LASTEXITCODE -ne 0) { throw '便携 Python 自检失败。' }
 @{ url = $url; sha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash; architecture = 'win-x64'; version = '3.13.16' } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Destination 'runtime-manifest.json') -Encoding utf8

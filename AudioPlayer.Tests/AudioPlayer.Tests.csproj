@@ -6,5 +6,5 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../AudioPlayer/AudioPlayer.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../AudioPlayer/AudioPlayer.csproj" /><ProjectReference Include="../Plugins/Bilibili/AudioPlayer.Plugin.Bilibili.csproj" /></ItemGroup>
 </Project>

@@ -25,6 +25,11 @@ def inspect():
         try: add(package, "ok", importlib.metadata.version(package))
         except importlib.metadata.PackageNotFoundError:
             dependencies_ok = False; add(package, "error", "未安装")
+    try:
+        from opencc import OpenCC
+        if OpenCC("t2s").convert("繁體中文") != "繁体中文": raise RuntimeError("字典转换自检失败")
+        add("OpenCC 繁体转简体", "ok", importlib.metadata.version("opencc-python-reimplemented") + " / 本地字典自检通过")
+    except Exception as exc: add("OpenCC 繁体转简体", "warning", str(exc) + "；关闭繁转简后仍可识别。")
     directories = configure_dll_directories()
     smi = shutil.which("nvidia-smi")
     if not smi:

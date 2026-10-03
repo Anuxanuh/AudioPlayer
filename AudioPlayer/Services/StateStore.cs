@@ -25,9 +25,11 @@ public sealed class StateStore
             try { state = Read(StatePath); }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
             {
+                Log.Warning(ex, "Reading settings failed; attempting backup; path={Path}", StatePath);
                 LoadWarning = "配置读取失败，已尝试恢复上次备份。";
                 try { state = Read(StatePath + ".bak"); }
-                catch (Exception backupEx) when (backupEx is IOException or JsonException or UnauthorizedAccessException) { }
+                catch (Exception backupEx) when (backupEx is IOException or JsonException or UnauthorizedAccessException)
+                { Log.Warning(backupEx, "Reading settings backup failed; using defaults"); }
             }
         }
         TransformPaths(state, expand: true);
@@ -64,6 +66,7 @@ public sealed class StateStore
         state.Playlists = lists;
         if (state.Playlists.Count == 0) state.Playlists.Add(new Playlist());
         var s = state.Settings;
+        s.EnabledPlugins = new Dictionary<string, bool>(s.EnabledPlugins ?? new(), StringComparer.OrdinalIgnoreCase);
         s.FontSize = double.IsFinite(s.FontSize) ? Math.Clamp(s.FontSize, 16, 80) : 34;
         s.Volume = double.IsFinite(s.Volume) ? Math.Clamp(s.Volume, 0, 1) : 0.65;
         s.PlaybackRate = double.IsFinite(s.PlaybackRate) ? Math.Clamp(s.PlaybackRate, 0.5, 3) : 1;

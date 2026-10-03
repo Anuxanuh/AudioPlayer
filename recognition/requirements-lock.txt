@@ -16,6 +16,7 @@ huggingface_hub==1.33.0
 idna==3.20
 numpy==2.5.3
 onnxruntime==1.30.0
+opencc-python-reimplemented==0.1.7
 packaging==26.3
 protobuf==7.36.2
 PyYAML==6.0.3

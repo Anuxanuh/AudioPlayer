@@ -1,0 +1,9 @@
+{
+  "id": "bilibili",
+  "name": "Bilibili 下载",
+  "version": "1.1.0",
+  "description": "登录自己的 Bilibili 账号，下载多 P 音频、视频与字幕。",
+  "assembly": "AudioPlayer.Plugin.Bilibili.dll",
+  "entryType": "AudioPlayer.Plugin.Bilibili.BilibiliPlugin",
+  "apiVersion": 1
+}

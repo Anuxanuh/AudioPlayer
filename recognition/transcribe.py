@@ -30,7 +30,22 @@ def timestamp(seconds: float) -> str:
     return f"[{minutes:02d}:{whole_seconds:02d}.{fraction:02d}]"
 
 
-def write_lrc(segments, stream, duration: float, progress=report, on_segment=None, wait=lambda: None) -> int:
+def create_text_converter(simplified: bool):
+    if not simplified:
+        return lambda text: text
+    try:
+        from opencc import OpenCC
+        converter = OpenCC("t2s")
+    except (ImportError, OSError) as exc:
+        raise RuntimeError("繁体转简体需要本地 OpenCC 字典；请完整复制便携包或安装 recognition/requirements.txt 中的依赖。") from exc
+    lock = threading.Lock()
+    def convert(text):
+        with lock:
+            return converter.convert(text)
+    return convert
+
+
+def write_lrc(segments, stream, duration: float, progress=report, on_segment=None, wait=lambda: None, convert_text=None) -> int:
     count = 0
     iterator = iter(segments)
     while True:
@@ -43,6 +58,8 @@ def write_lrc(segments, stream, duration: float, progress=report, on_segment=Non
         text = " ".join(segment.text.split()).replace("[", "（").replace("]", "）")
         if not text:
             continue
+        if convert_text:
+            text = convert_text(text)
         stream.write(f"{timestamp(segment.start)}{text}\n")
         # An empty timed line clears the overlay in instrumental / silent gaps.
         stream.write(f"{timestamp(segment.end)}\n")
@@ -54,7 +71,7 @@ def write_lrc(segments, stream, duration: float, progress=report, on_segment=Non
     return count
 
 
-def transcribe_file(model, audio_path, output_path, args, progress=report, on_segment=None, wait=lambda: None):
+def transcribe_file(model, audio_path, output_path, args, progress=report, on_segment=None, wait=lambda: None, convert_text=None):
     wait()
     audio = Path(audio_path).resolve()
     if not audio.is_file():
@@ -70,7 +87,7 @@ def transcribe_file(model, audio_path, output_path, args, progress=report, on_se
     with output.open("w", encoding="utf-8", newline="\n") as stream:
         title = audio.stem.replace("[", "（").replace("]", "）").replace("\n", " ")
         stream.write(f"[ti:{title}]\n[by:声屿 · 本地识别]\n")
-        count = write_lrc(segments, stream, info.duration, progress, on_segment, wait)
+        count = write_lrc(segments, stream, info.duration, progress, on_segment, wait, convert_text)
     if count == 0:
         output.unlink(missing_ok=True)
         raise RuntimeError("未识别到可用文字；请检查音频、语言设置，歌曲请关闭语音静音过滤。")
@@ -85,12 +102,14 @@ def main() -> int:
     parser.add_argument("--batch", help="JSON manifest; load the model once for all jobs")
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=1, help="Concurrent file transcription threads")
     parser.add_argument("--stream", action="store_true", help="Emit timed segments before the complete LRC is ready")
+    parser.add_argument("--simplified", action="store_true", help="Convert recognized text to Simplified Chinese locally with OpenCC")
     parser.add_argument("--pause-file", help="Pause cooperatively while this signal file exists")
     parser.add_argument("--language", default="auto")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--vad", action="store_true", help="Speech only; leave off for songs")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
+    convert_text = create_text_converter(args.simplified)
     model_path = Path(args.model).expanduser().resolve()
     for filename in ("model.bin", "config.json", "tokenizer.json"):
         if not (model_path / filename).is_file():
@@ -126,7 +145,7 @@ def main() -> int:
             def segment(start, end, text):
                 report(0, text, index=index, state="segment", start=start, end=end, text=text)
             try:
-                message = transcribe_file(model, job["audio"], job["temporary"], args, progress, segment, wait)
+                message = transcribe_file(model, job["audio"], job["temporary"], args, progress, segment, wait, convert_text)
                 report(100, message, index=index, state="completed")
             except Exception as exc:
                 report(100, f"{type(exc).__name__}: {exc}", index=index, state="failed")
@@ -137,7 +156,7 @@ def main() -> int:
         parser.error("识别需要 --audio 和 --output")
     def segment(start, end, text):
         report(0, text, type="segment", start=start, end=end, text=text)
-    report(100, transcribe_file(model, args.audio, args.output, args, on_segment=segment if args.stream else None))
+    report(100, transcribe_file(model, args.audio, args.output, args, on_segment=segment if args.stream else None, convert_text=convert_text))
     return 0
 
 

@@ -14,6 +14,50 @@ import transcribe
 
 
 class LyricsTests(unittest.TestCase):
+    def test_simplified_conversion_matches_stream_and_lrc_and_can_be_disabled(self):
+        text = "聲音讓我們聽見遠方，頭髮與發展，Hello 123 🌊"
+        expected = "声音让我们听见远方，头发与发展，Hello 123 🌊"
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled):
+                lines, events, progress = io.StringIO(), [], []
+                count = transcribe.write_lrc([SimpleNamespace(start=1.25, end=3.5, text=text)], lines, 5,
+                    progress=lambda pct, msg: progress.append(msg), on_segment=lambda start, end, msg: events.append((start, end, msg)),
+                    convert_text=transcribe.create_text_converter(enabled))
+                result = expected if enabled else text
+                self.assertEqual(count, 1)
+                self.assertEqual(lines.getvalue(), f"[00:01.25]{result}\n[00:03.50]\n")
+                self.assertEqual(events, [(1.25, 3.5, result)])
+                self.assertEqual(progress, [result])
+
+    def test_worker_simplified_flag_applies_to_single_and_parallel_batch(self):
+        class FakeModel:
+            def __init__(self, *args, **kwargs): pass
+            def transcribe(self, *args, **kwargs):
+                return iter([SimpleNamespace(start=0, end=1, text="繁體歌詞與音樂")]), SimpleNamespace(duration=2, language="zh")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ("model.bin", "config.json", "tokenizer.json", "語音.wav"):
+                (root / name).write_text("test", encoding="utf-8")
+            for batch in (False, True):
+                for simplified in (False, True):
+                    with self.subTest(batch=batch, simplified=simplified):
+                        outputs = [root / f"{i}.lrc" for i in range(2 if batch else 1)]
+                        args = ["transcribe.py", "--model", folder, "--stream"]
+                        if simplified: args.append("--simplified")
+                        if batch:
+                            manifest = root / "batch.json"
+                            manifest.write_text(json.dumps([{"index":i, "audio":str(root / "語音.wav"), "temporary":str(path)} for i, path in enumerate(outputs)]), encoding="utf-8")
+                            args += ["--batch", str(manifest), "--workers", "2"]
+                        else: args += ["--audio", str(root / "語音.wav"), "--output", str(outputs[0])]
+                        stdout = io.StringIO()
+                        with patch.object(sys, "argv", args), patch.dict(sys.modules, {"faster_whisper": SimpleNamespace(WhisperModel=FakeModel)}), contextlib.redirect_stdout(stdout):
+                            self.assertEqual(transcribe.main(), 0)
+                        expected = "繁体歌词与音乐" if simplified else "繁體歌詞與音樂"
+                        self.assertTrue(all(expected in path.read_text(encoding="utf-8") for path in outputs))
+                        segments = [e for line in stdout.getvalue().splitlines() if (e := json.loads(line)).get("type", e.get("state")) == "segment"]
+                        self.assertEqual(len(segments), len(outputs))
+                        self.assertTrue(all(e["text"] == expected for e in segments))
+
     def test_parallel_files_share_one_model_and_use_two_threads(self):
         loaded, threads = [], set()
         barrier = threading.Barrier(2, timeout=5)

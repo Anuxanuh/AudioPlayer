@@ -3,7 +3,7 @@
  x:Name="Root" Focusable="False" Loaded="View_Loaded" Unloaded="View_Unloaded">
  <Grid>
   <Grid.RowDefinitions><RowDefinition Height="36"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-  <TextBlock Text="同步歌词" FontSize="12" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+  <TextBlock Text="同步歌词 · 点击跳转" FontSize="12" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
   <Button Content="回到当前歌词" HorizontalAlignment="Right" Padding="10,4" FontSize="11" Click="Resume_Click" ToolTip="停止翻阅 5 秒后自动回到播放位置">
    <Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsFollowing, ElementName=Root}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Button.Style>
   </Button>
@@ -15,12 +15,16 @@
     <Border x:Name="TopSpace" Height="0"/>
     <ItemsControl x:Name="LyricItems" HorizontalContentAlignment="Stretch">
      <ItemsControl.ItemTemplate><DataTemplate>
+      <Button x:Name="LyricSeekButton" Click="Lyric_Click" Cursor="Hand" Padding="0" BorderThickness="0" Background="Transparent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+              ToolTip="{Binding Timestamp, StringFormat={}{0} · 点击跳转}" AutomationProperties.Name="{Binding DisplayText}">
+       <Button.Template><ControlTemplate TargetType="Button"><ContentPresenter HorizontalAlignment="Stretch"/></ControlTemplate></Button.Template>
       <Border Padding="12,12" CornerRadius="10" Margin="0,2,6,2">
-       <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="Transparent"/><Style.Triggers><DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="Background" Value="#D4E5DB"/></DataTrigger></Style.Triggers></Style></Border.Style>
-       <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" FontSize="21" LineHeight="31" ToolTip="{Binding Timestamp}">
+       <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="Transparent"/><Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#DDE9E0"/></Trigger><DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="Background" Value="#D4E5DB"/></DataTrigger></Style.Triggers></Style></Border.Style>
+       <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" FontSize="21" LineHeight="31">
         <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="#6C8178"/><Setter Property="FontWeight" Value="Normal"/><Style.Triggers><DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="Foreground" Value="#145A4C"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
        </TextBlock>
       </Border>
+      </Button>
      </DataTemplate></ItemsControl.ItemTemplate>
     </ItemsControl>
     <Border x:Name="BottomSpace" Height="0"/>
