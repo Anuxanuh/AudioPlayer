@@ -120,6 +120,28 @@ tiny、base、small、medium、large-v1、large-v2、large-v3、large-v3-turbo�
 
 开发需要 .NET 10 SDK。普通 Debug/Release 构建用于开发，不等于完整便携包。
 
+### 一键生成交付 ZIP
+
+**双击项目根目录的 `build.cmd`**。也可以在 PowerShell 7 中运行 `./build.ps1`；从其他工作目录调用同样有效。
+
+脚本自动检查依赖，编译 Release 主程序和 Bilibili 插件，附带 .NET／Python／FFmpeg 运行环境，生成**无模型、无用户数据**的 ZIP 和 SHA-256 文件，再解压到中文路径执行便携自检。默认不下载、不校验、不复制 Whisper 模型；即使本机没有 `models` 目录也可以构建。
+
+- 构建机需要 **Windows x64、PowerShell 7、.NET 10 SDK**，以及 Visual Studio／Build Tools 提供的 **x64 Visual C++ 可再发行 CRT**。运行包的用户无需安装这些开发工具。
+- `runtime` 不完整时，自动调用依赖准备脚本联网下载。首次准备需要带 pip 的开发 Python，依次查找项目 `.venv`、PATH 上的 Python、`py` 启动器；完整运行环境可直接复用，重复构建不会重复下载。
+- ZIP 和校验文件默认位于 `artifacts/ShengYu-win-x64-NoModels-日期时间-随机后缀.zip` 及 `.zip.sha256`。每次使用独立发布目录，不覆盖正在运行的旧播放器、模型或用户数据。
+- 完整日志位于 `artifacts/build-logs/`。只有编译、打包及自检全部成功，才更新 `artifacts/latest-build.json`，其中包含本次 ZIP 路径、哈希和日志位置。失败时窗口保留错误信息并返回非零退出码。
+
+可选参数（相对路径以项目根目录为基准）：
+
+```powershell
+./build.ps1 -OutputDirectory 'artifacts/交付包'
+./build.ps1 -BootstrapPython 'C:/Python313/python.exe' -VcCrtDirectory 'C:/VS/VC/Redist/MSVC/14.xx/x64/Microsoft.VC143.CRT'
+# 自动化中调用双击入口，不等待按键：
+./build.cmd --no-pause
+```
+
+以下保留单步开发和含模型便携目录的重建方式。
+
 ```powershell
 dotnet build AudioPlayer.slnx -c Release
 dotnet run --project AudioPlayer/AudioPlayer.csproj -c Release
