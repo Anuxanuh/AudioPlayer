@@ -864,6 +864,7 @@ public partial class MainWindow : Window
 
     private void RestoreWindow()
     {
+        if (_exiting || _disposed) return;
         Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
@@ -899,6 +900,10 @@ public partial class MainWindow : Window
     {
         if (_exiting) return;
         _exiting = true;
+        Log.Information("Application exit requested; closeToTray={CloseToTray}", _view.Settings.CloseToTray);
+        // Completed tasks do not yield: let WPF finish the cancelled Closing event before cleanup/Close.
+        await Dispatcher.Yield(DispatcherPriority.Background);
+        if (_disposed) return; // Windows session shutdown may have already disposed the window.
         _lifetime.Cancel();
         _clock.Stop(); _saveTimer.Stop();
         await _plugins.StopAsync();
@@ -909,6 +914,7 @@ public partial class MainWindow : Window
         SaveState();
         DisposeResources();
         _allowClose = true;
+        Log.Information("Application resources released; closing main window");
         Close();
         Application.Current.Shutdown();
     }

@@ -29,6 +29,7 @@ internal static class Program
             using var instance = new SingleInstanceService(args[1]);
             return instance.IsPrimary ? 3 : instance.ActivateExistingAsync(args.Skip(2).ToArray()).GetAwaiter().GetResult() ? 0 : 4;
         }
+        if (args.FirstOrDefault() == "--exit-scenario") return ExitScenario(args[1], args[2]);
         _root = Path.GetFullPath(Path.Combine("artifacts", "tests", Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(_root);
         try
@@ -43,6 +44,7 @@ internal static class Program
             Test("Portable state: internal paths survive directory relocation", PortableState);
             Test("Models: only complete model folders become selections", Models);
             Test("Covers: embedded artwork, sidecar fallback and unlocked files", Covers);
+            if (args.Contains("--exit")) Test("Exit: direct close, repeated close, pending recognition and tray shutdown", ExitScenarios);
             if (args.Contains("--plugins")) Test("Plugins: default off, discovery failures, startup loading, encrypted session and UI", Plugins);
             if (args.Contains("--bili-encoding")) Test("Bilibili: UTF-8 launch, Chinese QR/account/title/quality text and Unicode paths", BilibiliEncoding);
             if (args.Contains("--bili-selection")) Test("Bilibili: checkbox, Ctrl/Shift ranges, inverse, virtualized episodes and reset", BilibiliSelection);
@@ -888,6 +890,76 @@ pathlib.Path(a.output).write_text('[00:00.00]'+name+' complete\n[00:00.80]\n',en
         Assert(store.Load().Settings.EnabledPlugins["bilibili"], "Plugin setting persistence");
     }
 
+    private static void ExitScenarios()
+    {
+        foreach (string scenario in new[] { "direct", "repeated", "pending", "tray" })
+        {
+            var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            foreach (string argument in new[] { Assembly.GetExecutingAssembly().Location, "--exit-scenario", scenario, Path.Combine(_root, "exit-" + scenario) }) start.ArgumentList.Add(argument);
+            using var child = Process.Start(start)!;
+            var stdout = child.StandardOutput.ReadToEndAsync(); var stderr = child.StandardError.ReadToEndAsync();
+            if (!child.WaitForExit(20000)) { child.Kill(true); child.WaitForExit(); throw new Exception("Exit scenario timed out: " + scenario); }
+            Assert(child.ExitCode == 0, $"Exit scenario {scenario} failed: {stdout.GetAwaiter().GetResult()} {stderr.GetAwaiter().GetResult()}");
+        }
+    }
+    private static int ExitScenario(string scenario, string root)
+    {
+        try
+        {
+            var app = new App(startMainWindow: false); app.InitializeComponent();
+            Exception? unhandled = null;
+            app.DispatcherUnhandledException += (_, e) => { unhandled = e.Exception; e.Handled = true; app.Shutdown(1); };
+            var store = new StateStore(root);
+            var window = new MainWindow(store, true) { ShowActivated = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = -20000 };
+            var view = (PlayerViewModel)window.DataContext;
+            view.Settings.CloseToTray = scenario == "tray";
+            view.Settings.Volume = 0.37; // The exit must persist the latest settings.
+            var tray = Private<Forms.NotifyIcon>(window, "_tray");
+            int closed = 0; window.Closed += (_, _) => closed++;
+            using var recognition = new CancellationTokenSource();
+            var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (scenario == "pending")
+            {
+                typeof(MainWindow).GetField("_recognitionCancellation", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, recognition);
+                typeof(MainWindow).GetField("_recognitionTask", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, pending.Task);
+            }
+            var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+            timeout.Tick += (_, _) => { unhandled = new TimeoutException("Exit did not complete"); app.Shutdown(2); };
+            timeout.Start();
+            window.Loaded += (_, _) => window.Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                if (scenario == "tray")
+                {
+                    typeof(MainWindow).GetField("_trayHintShown", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, true);
+                    window.Close();
+                    Assert(!window.IsVisible && tray.Visible && closed == 0, "Close-to-tray must hide without disposing");
+                    ((Forms.ToolStripMenuItem)tray.ContextMenuStrip!.Items[0]).PerformClick();
+                    Assert(window.IsVisible, "Tray restore must still work");
+                    ((Forms.ToolStripMenuItem)tray.ContextMenuStrip.Items[^1]).PerformClick();
+                }
+                else
+                {
+                    window.Close();
+                    if (scenario is "repeated" or "pending") window.Close();
+                    if (scenario == "pending")
+                    {
+                        await Task.Delay(100);
+                        Assert(recognition.IsCancellationRequested && closed == 0 && !Private<bool>(window, "_disposed"), "Exit must cancel and await recognition before disposal");
+                        window.Close(); // Another close while awaiting cleanup must remain cancelled.
+                        pending.SetResult();
+                    }
+                }
+            }));
+            int result = app.Run(window); timeout.Stop();
+            if (unhandled is not null) throw new Exception("Unhandled exception during exit", unhandled);
+            Assert(result == 0 && closed == 1 && Private<bool>(window, "_disposed") && !tray.Visible, "Exit must close and release the tray exactly once");
+            Assert(Math.Abs(store.Load().Settings.Volume - 0.37) < 0.001, "Exit must save settings");
+            Console.WriteLine("PASS exit " + scenario);
+            return 0;
+        }
+        catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+    }
+
     private static void NativeLifecycle()
     {
         using var nativeLog = AppLogging.CreateLogger(Path.Combine(_root, "native", "logs"));
@@ -974,6 +1046,7 @@ pathlib.Path(a.output).write_text('[00:00.00]'+name+' complete\n[00:00.80]\n',en
         ((Forms.ToolStripMenuItem)tray.ContextMenuStrip.Items[0]).PerformClick();
         Assert(window.IsVisible, "Tray restores main window");
         ((Forms.ToolStripMenuItem)tray.ContextMenuStrip.Items[^1]).PerformClick();
+        Pump(() => !tray.Visible && !audio.IsPlaying);
         Assert(!tray.Visible && !audio.IsPlaying, "Tray exit must release icon and playback");
         Assert(File.Exists(Path.Combine(store.DirectoryPath, "state.json")), "Exit persisted state");
     }
