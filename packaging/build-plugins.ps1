@@ -15,3 +15,7 @@ foreach ($name in @('ffmpeg','vendor')) {
 Copy-Item -LiteralPath (Join-Path $repo 'Plugins/Bilibili/README.md') -Destination (Join-Path $destination 'README.md') -Force
 Copy-Item -LiteralPath (Join-Path $runtime 'dependency-manifest.json') -Destination (Join-Path $destination 'dependency-manifest.json') -Force
 Write-Host "Bilibili 插件已生成（默认关闭）：$destination"
+$novelDestination = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) 'plugins/novel'
+dotnet publish (Join-Path $repo 'Plugins/Novel/AudioPlayer.Plugin.Novel.csproj') -c Release -r win-x64 --self-contained false -o $novelDestination --nologo
+if ($LASTEXITCODE -ne 0) { throw '小说章节插件构建失败。' }
+Write-Host "小说章节插件已生成（默认关闭）：$novelDestination"

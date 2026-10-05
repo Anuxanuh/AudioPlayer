@@ -2,5 +2,6 @@
   <Project Path="AudioPlayer/AudioPlayer.csproj" />
   <Project Path="AudioPlayer.Plugin.Abstractions/AudioPlayer.Plugin.Abstractions.csproj" />
   <Project Path="Plugins/Bilibili/AudioPlayer.Plugin.Bilibili.csproj" />
+  <Project Path="Plugins/Novel/AudioPlayer.Plugin.Novel.csproj" />
   <Project Path="AudioPlayer.Tests/AudioPlayer.Tests.csproj" />
 </Solution>

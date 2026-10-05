@@ -31,6 +31,9 @@ try {
     foreach ($required in @('AudioPlayer.exe', 'AudioPlayer.dll', 'AudioPlayer.Plugin.Abstractions.dll', 'Serilog.dll', 'Serilog.Sinks.File.dll', 'python/python.exe', 'python/Lib/site-packages/opencc/opencc.py', 'recognition/transcribe.py', 'recognition/model_manager.py', 'plugins/bilibili/plugin.json', 'plugins/bilibili/AudioPlayer.Plugin.Bilibili.dll', 'plugins/bilibili/ffmpeg/ffmpeg.exe', 'plugins/bilibili/vendor/qrcode/__init__.py', 'plugins/bilibili/vendor/yt_dlp/__init__.py', 'README.md', 'portable.flag')) {
         if ($names -notcontains ('ShengYu/' + $required)) { throw "交付 ZIP 缺少 $required" }
     }
+    foreach ($required in @('plugins/novel/plugin.json','plugins/novel/AudioPlayer.Plugin.Novel.dll','plugins/novel/TagLibSharp.dll','plugins/novel/README.md')) {
+        if ($names -notcontains ('ShengYu/' + $required)) { throw "交付 ZIP 缺少 $required" }
+    }
     $entries = $archive.Entries.Count
 }
 finally { $archive.Dispose() }

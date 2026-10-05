@@ -1,0 +1,9 @@
+{
+  "id": "novel",
+  "name": "小说章节",
+  "version": "1.0.0",
+  "description": "小说章节与播放列表双向定位、LRC 对齐、分卷预览及本地缓存。",
+  "assembly": "AudioPlayer.Plugin.Novel.dll",
+  "entryType": "AudioPlayer.Plugin.Novel.NovelPlugin",
+  "apiVersion": 2
+}

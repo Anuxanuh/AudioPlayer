@@ -30,6 +30,9 @@ htmlcov/
 /coverage/
 coverage.xml
 
+# Local documentation
+/docs/
+
 # Downloaded model weights, bundled runtimes, and packaging outputs.
 # Anchor these to the root: AudioPlayer/Models/ contains application source.
 /models/

@@ -1,0 +1,70 @@
+<UserControl x:Class="AudioPlayer.Plugin.Novel.NovelPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:AudioPlayer.Plugin.Novel" Loaded="Page_Loaded" Unloaded="Page_Unloaded">
+  <UserControl.Resources>
+    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Padding" Value="10,6"/><Setter Property="Margin" Value="0,0,6,6"/></Style>
+    <Style x:Key="Field" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"><Setter Property="Margin" Value="0,4,0,12"/><Setter Property="Padding" Value="6"/></Style>
+    <HierarchicalDataTemplate DataType="{x:Type local:ChapterGroup}" ItemsSource="{Binding Chapters}"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/></HierarchicalDataTemplate>
+    <DataTemplate DataType="{x:Type local:Chapter}">
+      <Border Padding="5" CornerRadius="4"><Border.Style><Style TargetType="Border"><Setter Property="Background" Value="Transparent"/><Style.Triggers><DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="Background" Value="#C2E9DD"/></DataTrigger></Style.Triggers></Style></Border.Style>
+        <StackPanel><TextBlock Text="{Binding Label}" TextWrapping="Wrap"/><TextBlock Text="{Binding Availability}" Foreground="#586D69" FontSize="11"/></StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <DockPanel Margin="0,0,0,8"><TextBlock Text="小说章节" FontSize="24" FontWeight="SemiBold"/><TextBlock x:Name="PlaylistLabel" Margin="16,8,0,0" Foreground="#586D69" TextTrimming="CharacterEllipsis"/></DockPanel>
+    <WrapPanel x:Name="Toolbar" Grid.Row="1">
+      <Button Content="选择小说…" Click="ChooseBook_Click"/><Button Content="定位当前进度" Click="Locate_Click"/><Button Content="生成缓存" Click="Generate_Click"/>
+      <Button Content="清除缓存" Click="ClearCache_Click"/><Button Content="回滚缓存" Click="Rollback_Click"/><Button x:Name="CancelButton" Content="取消任务" Click="Cancel_Click" IsEnabled="False"/>
+    </WrapPanel>
+    <StackPanel Grid.Row="2" Margin="0,0,0,8"><TextBlock x:Name="Status" Text="请选择播放列表和小说文本。" TextWrapping="Wrap" MaxHeight="42" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="CacheStatus" Foreground="#586D69" FontSize="11" TextWrapping="Wrap" MaxHeight="32"/></StackPanel>
+    <TabControl Grid.Row="3" x:Name="Tabs">
+      <TabItem Header="章节与播放">
+        <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <TreeView x:Name="ChapterTree" SelectedItemChanged="Chapter_Selected" ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+          <Grid Grid.Column="2"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel><TextBlock x:Name="ChapterTitle" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock x:Name="ChapterProgress" Foreground="#586D69" Margin="0,4" TextWrapping="Wrap"/></StackPanel>
+            <WrapPanel Grid.Row="1"><Button Content="播放本章" Click="PlayChapter_Click"/><Button Content="播放选中片段" Click="PlaySegment_Click"/><Button x:Name="ManualStartButton" Content="设为异常起点" Click="ManualStart_Click" IsEnabled="False"/></WrapPanel>
+            <DataGrid Grid.Row="2" x:Name="SegmentsGrid" Height="116" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" SelectionMode="Single" Margin="0,0,0,6">
+              <DataGrid.Columns><DataGridTextColumn Header="音频 / 片段" Binding="{Binding FileName}" Width="*"/><DataGridTextColumn Header="时间" Binding="{Binding Range}" Width="145"/><DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="90"/></DataGrid.Columns>
+              <DataGrid.RowStyle><Style TargetType="DataGridRow"><Setter Property="ToolTip" Value="{Binding Evidence}"/></Style></DataGrid.RowStyle>
+            </DataGrid>
+            <TextBox Grid.Row="3" x:Name="ChapterBody" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="10"/>
+          </Grid>
+        </Grid>
+      </TabItem>
+      <TabItem Header="解析预览与校对">
+        <Grid Margin="0,8,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="110"/></Grid.RowDefinitions>
+          <WrapPanel><Button Content="应用校对" Click="ApplyPreview_Click"/><Button Content="撤销未应用修改" Click="UndoPreview_Click"/><Button Content="上移" Click="MoveUp_Click"/><Button Content="下移" Click="MoveDown_Click"/><Button Content="合并下一章" Click="Merge_Click"/><Button Content="在正文光标处拆分" Click="Split_Click"/><Button Content="修改本卷标题" Click="RenameVolume_Click"/></WrapPanel>
+          <DataGrid x:Name="PreviewGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" SelectionChanged="Preview_Selected">
+            <DataGrid.Columns><DataGridTextColumn Header="顺序(0起)" Binding="{Binding Order}" Width="82"/><DataGridTextColumn Header="章序号" Binding="{Binding Number}" Width="60"/><DataGridTextColumn Header="章节标题" Binding="{Binding Title}" Width="*"/><DataGridTextColumn Header="分卷标题原文" Binding="{Binding Volume}" Width="170"/><DataGridTextColumn Header="卷序号" Binding="{Binding VolumeNumber}" Width="60"/></DataGrid.Columns>
+          </DataGrid>
+          <TextBox Grid.Row="2" x:Name="BodyEditor" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0" ToolTip="可编辑正文；把光标放在拆分点，再点击拆分。"/>
+        </Grid>
+      </TabItem>
+      <TabItem Header="片段校对">
+        <Grid Margin="0,8,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="先在章节页选择一章。可调整秒数、删除错误片段，或按播放器当前进度添加片段。保存后启用缓存跟踪；原缓存可回滚。" TextWrapping="Wrap" Margin="0,0,0,8"/>
+          <DataGrid Grid.Row="1" x:Name="EditSegmentsGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single">
+            <DataGrid.Columns><DataGridTextColumn Header="音频" Binding="{Binding FileName}" IsReadOnly="True" Width="*"/><DataGridTextColumn Header="开始秒" Binding="{Binding Start}" Width="80"/><DataGridTextColumn Header="结束秒" Binding="{Binding End}" Width="80"/><DataGridTextColumn Header="匹配依据" Binding="{Binding Evidence}" IsReadOnly="True" Width="2*"/></DataGrid.Columns>
+          </DataGrid>
+          <WrapPanel Grid.Row="2" Margin="0,8,0,0"><Button Content="添加当前音频片段" Click="AddSegment_Click"/><Button Content="删除选中片段" Click="DeleteSegment_Click"/><Button Content="保存片段校对" Click="SaveSegments_Click"/></WrapPanel>
+        </Grid>
+      </TabItem>
+      <TabItem Header="设置">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="4,10,12,0">
+          <WrapPanel><CheckBox x:Name="AutoLocateBox" Content="解析后自动定位一次" Margin="0,0,20,10"/><CheckBox x:Name="VolumesBox" Content="优先按分卷折叠" Margin="0,0,20,10"/><TextBlock Text="每组章节数" Margin="0,3,8,0"/><TextBox x:Name="GroupSizeBox" Width="70"/></WrapPanel>
+          <TextBlock Text="有缓存时自动跟踪跨章节；无缓存时不跟踪。此行为不受“解析后自动定位”开关影响。" Foreground="#586D69" TextWrapping="Wrap" Margin="0,0,0,12"/>
+          <TextBlock Text="章节标题正则（命名组 number、title；{number} 与 {units} 可用作占位符）"/><TextBox x:Name="ChapterRuleBox" Style="{StaticResource Field}"/>
+          <WrapPanel><TextBlock Text="章节单位" Margin="0,6,8,0"/><TextBox x:Name="UnitsBox" Width="95" Margin="0,0,12,10"/><ComboBox x:Name="NumberBox" Width="125" Margin="0,0,12,10"/><CheckBox x:Name="HasTitleBox" Content="标题允许包含名称" Margin="0,5,0,0"/></WrapPanel>
+          <TextBlock Text="分卷标题正则（留空则不识别分卷）"/><TextBox x:Name="VolumeRuleBox" Style="{StaticResource Field}"/>
+          <TextBlock Text="特殊章节正则（序章、番外、后记等）"/><TextBox x:Name="SpecialRuleBox" Style="{StaticResource Field}"/>
+          <TextBlock Text="忽略干扰行正则（留空不忽略）"/><TextBox x:Name="IgnoreRuleBox" Style="{StaticResource Field}"/>
+          <WrapPanel><TextBlock Text="文本编码" Margin="0,6,10,0"/><ComboBox x:Name="EncodingBox" Width="150" Margin="0,0,0,12"/></WrapPanel>
+          <TextBlock Text="缓存目录（留空使用插件 data 目录）"/><DockPanel><Button Content="浏览…" DockPanel.Dock="Right" Click="CacheFolder_Click"/><TextBox x:Name="CacheFolderBox" Style="{StaticResource Field}"/></DockPanel>
+          <WrapPanel><Button Content="保存显示设置" Click="SaveSettings_Click"/><Button Content="保存规则并重新解析" Click="Reparse_Click"/></WrapPanel>
+          <TextBlock Text="重新解析或应用章节校对会解除当前缓存绑定，随后可重新生成；已有缓存文件不会被覆盖，生成时保留上一版备份。" Foreground="#586D69" TextWrapping="Wrap"/>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </Grid>
+</UserControl>

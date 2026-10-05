@@ -93,7 +93,7 @@ public partial class MainWindow : Window
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveState(); };
         _view.Settings.PropertyChanged += Settings_PropertyChanged;
         _ready = true;
-        _plugins.Start(Path.Combine(AppContext.BaseDirectory, "plugins"), _store.DirectoryPath, _view.Settings.EnabledPlugins, () => _view.Settings.PythonPath, ScheduleSave);
+        _plugins.Start(Path.Combine(AppContext.BaseDirectory, "plugins"), _store.DirectoryPath, _view.Settings.EnabledPlugins, () => _view.Settings.PythonPath, ScheduleSave, new PluginPlaybackHost(this));
         PluginSettingsList.ItemsSource = _plugins.Entries;
         PluginSummary.Text = _plugins.Entries.Count == 0 ? "未发现插件。将插件文件夹放入程序目录的 plugins 后重启。" : $"已发现 {_plugins.Entries.Count} 个插件，默认关闭。更改开关后重启播放器生效。";
         if (_plugins.Errors.Count > 0) PluginSummary.Text += "\n" + string.Join("\n", _plugins.Errors);

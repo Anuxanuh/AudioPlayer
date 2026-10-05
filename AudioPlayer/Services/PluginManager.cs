@@ -51,7 +51,7 @@ public sealed class PluginManager : IDisposable
         }
     }
 
-    public void Start(string root, string dataRoot, IDictionary<string, bool> enabled, Func<string> python, Action changed)
+    public void Start(string root, string dataRoot, IDictionary<string, bool> enabled, Func<string> python, Action changed, IPlaybackHost? playback = null)
     {
         if (!Directory.Exists(root)) return;
         var entries = new List<PluginEntry>();
@@ -68,7 +68,7 @@ public sealed class PluginManager : IDisposable
             {
                 var manifest = JsonSerializer.Deserialize<PluginManifest>(File.ReadAllText(manifestPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new InvalidDataException("清单为空");
                 if (string.IsNullOrWhiteSpace(manifest.Id) || !Regex.IsMatch(manifest.Id, @"^[a-z0-9][a-z0-9._-]{0,63}$") || !ids.Add(manifest.Id)) throw new InvalidDataException("插件 ID 无效或重复");
-                if (string.IsNullOrWhiteSpace(manifest.Name) || manifest.ApiVersion != 1) throw new InvalidDataException("插件名称或 API 版本不兼容");
+                if (string.IsNullOrWhiteSpace(manifest.Name) || manifest.ApiVersion is not (1 or 2)) throw new InvalidDataException("插件名称或 API 版本不兼容");
                 if (string.IsNullOrWhiteSpace(manifest.Assembly) || Path.GetFileName(manifest.Assembly) != manifest.Assembly || !manifest.Assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("程序集必须位于插件目录内");
                 var entry = new PluginEntry { Manifest = manifest, DirectoryPath = Path.GetFullPath(directory), Enabled = enabled.TryGetValue(manifest.Id, out bool value) && value };
                 entry.StartedEnabled = entry.Enabled;
@@ -85,7 +85,7 @@ public sealed class PluginManager : IDisposable
                         if (!typeof(IPlayerPlugin).IsAssignableFrom(type)) throw new InvalidDataException("入口类型未实现 IPlayerPlugin");
                         entry.Instance = (IPlayerPlugin)Activator.CreateInstance(type)!;
                         var pluginContext = new PluginContext(AppContext.BaseDirectory, entry.DirectoryPath, Path.Combine(dataRoot, "plugins", manifest.Id), python,
-                            (level, message) => { if (level == "error") Log.Error("Plugin {Plugin}: {Message}", manifest.Id, message); else Log.Information("Plugin {Plugin}: {Message}", manifest.Id, message); }, _shutdown.Token);
+                            (level, message) => { if (level == "error") Log.Error("Plugin {Plugin}: {Message}", manifest.Id, message); else Log.Information("Plugin {Plugin}: {Message}", manifest.Id, message); }, _shutdown.Token) { Playback = playback };
                         entry.Page = entry.Instance.CreatePage(pluginContext);
                         entry.StartupStatus = "已加载";
                         Log.Information("Plugin loaded; id={Id}; version={Version}", manifest.Id, manifest.Version);

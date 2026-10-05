@@ -17,7 +17,7 @@ using AudioPlayer.Services;
 using AudioPlayer.ViewModels;
 using AudioPlayer.Views;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _passed;
     private static string _root = "";
@@ -45,6 +45,9 @@ internal static class Program
             Test("Models: only complete model folders become selections", Models);
             Test("Covers: embedded artwork, sidecar fallback and unlocked files", Covers);
             if (args.Contains("--exit")) Test("Exit: direct close, repeated close, pending recognition and tray shutdown", ExitScenarios);
+            if (args.Contains("--novel")) Test("Novel: parsing, anchors, gaps, cache, tracking and large indexes", NovelCore);
+            if (args.Contains("--novel-ui")) Test("Novel: real plugin page, bindings, preview correction and cache operations", NovelUi);
+            if (args.Contains("--novel-host")) Test("Novel host: playlist snapshot, audio switch, timed seek and play", NovelHost);
             if (args.Contains("--plugins")) Test("Plugins: default off, discovery failures, startup loading, encrypted session and UI", Plugins);
             if (args.Contains("--bili-encoding")) Test("Bilibili: UTF-8 launch, Chinese QR/account/title/quality text and Unicode paths", BilibiliEncoding);
             if (args.Contains("--bili-selection")) Test("Bilibili: checkbox, Ctrl/Shift ranges, inverse, virtualized episodes and reset", BilibiliSelection);

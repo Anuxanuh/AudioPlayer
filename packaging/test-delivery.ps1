@@ -10,6 +10,8 @@ foreach ($name in @('models', 'data', 'logs', 'Downloads')) {
 }
 $manifest = Get-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Raw | ConvertFrom-Json
 if ($manifest.models.Count -ne 0 -or $manifest.flavor -ne 'no-models-no-user-data') { throw '交付清单不正确。' }
+$novelManifest = Get-Content -LiteralPath (Join-Path $package 'plugins/novel/plugin.json') -Raw | ConvertFrom-Json
+if ($novelManifest.id -ne 'novel' -or $novelManifest.apiVersion -ne 2 -or !(Test-Path -LiteralPath (Join-Path $package 'plugins/novel/AudioPlayer.Plugin.Novel.dll'))) { throw '小说插件不完整。' }
 $plugin = Join-Path $package 'plugins/bilibili'
 if (!(Test-Path -LiteralPath (Join-Path $plugin 'plugin.json'))) { throw '交付缺少插件。' }
 & (Join-Path $package 'python/python.exe') -I -c 'import sys; sys.path.insert(0,sys.argv[1]); import yt_dlp, qrcode; from yt_dlp.version import __version__; print("Plugin Python dependencies OK", __version__)' (Join-Path $plugin 'vendor')
