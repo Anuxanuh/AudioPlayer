@@ -1,23 +1,27 @@
-param([Parameter(Mandatory)][string]$ZipPath)
+param([Parameter(Mandatory)][string]$ZipPath, [string]$PythonPath = '')
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 $repo = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$testRoot = Join-Path $repo ('artifacts/交付验证 无模型 ' + [Guid]::NewGuid().ToString('N'))
+. (Join-Path $PSScriptRoot 'build-common.ps1')
+$testRoot = Join-Path $repo ('artifacts/交付验证 ' + [Guid]::NewGuid().ToString('N'))
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::ExtractToDirectory([IO.Path]::GetFullPath($ZipPath), $testRoot)
-$package = Join-Path $testRoot 'ShengYu'
-foreach ($name in @('models', 'data', 'logs', 'Downloads')) {
-    if (Test-Path -LiteralPath (Join-Path $package $name)) { throw "交付包含有 $name 目录。" }
+$package = if (Test-Path -LiteralPath (Join-Path $testRoot 'ShengYu/package-manifest.json')) { Join-Path $testRoot 'ShengYu' } else { $testRoot }
+$manifest = Assert-PackageLayout $package $repo
+foreach ($id in $manifest.models) { $null = @(Get-ModelBuildFiles (Join-Path $package "models/faster-whisper-$id") $id -VerifyHash) }
+if ($manifest.kind -eq 'app') { $PythonPath = Join-Path $package 'python/python.exe' }
+if ($manifest.plugins -contains 'bilibili') {
+    if (!$PythonPath) { $PythonPath = Join-Path $repo 'runtime/python/python.exe' }
+    $plugin = Join-Path $package 'plugins/bilibili'
+    & $PythonPath -I -X utf8 -c 'import sys; sys.path.insert(0,sys.argv[1]); import yt_dlp, qrcode; from importlib.metadata import version; assert version("yt-dlp") == "2026.8.19"; assert version("qrcode") == "8.2"; print("Bilibili Python dependencies OK")' (Join-Path $plugin 'vendor')
+    if ($LASTEXITCODE -ne 0) { throw '插件 Python 依赖不完整。' }
+    & (Join-Path $plugin 'ffmpeg/ffmpeg.exe') -version | Select-Object -First 1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw '插件 FFmpeg 不可用。' }
 }
-$manifest = Get-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Raw | ConvertFrom-Json
-if ($manifest.models.Count -ne 0 -or $manifest.flavor -ne 'no-models-no-user-data') { throw '交付清单不正确。' }
-$novelManifest = Get-Content -LiteralPath (Join-Path $package 'plugins/novel/plugin.json') -Raw | ConvertFrom-Json
-if ($novelManifest.id -ne 'novel' -or $novelManifest.apiVersion -ne 2 -or !(Test-Path -LiteralPath (Join-Path $package 'plugins/novel/AudioPlayer.Plugin.Novel.dll'))) { throw '小说插件不完整。' }
-$plugin = Join-Path $package 'plugins/bilibili'
-if (!(Test-Path -LiteralPath (Join-Path $plugin 'plugin.json'))) { throw '交付缺少插件。' }
-& (Join-Path $package 'python/python.exe') -I -c 'import sys; sys.path.insert(0,sys.argv[1]); import yt_dlp, qrcode; from yt_dlp.version import __version__; print("Plugin Python dependencies OK", __version__)' (Join-Path $plugin 'vendor')
-if ($LASTEXITCODE -ne 0) { throw '插件 Python 依赖不完整。' }
-& (Join-Path $plugin 'ffmpeg/ffmpeg.exe') -version | Select-Object -First 1
-if ($LASTEXITCODE -ne 0) { throw '插件 FFmpeg 不可用。' }
+if ($manifest.kind -eq 'plugin') {
+    Write-Host "PASS: 独立插件 $($manifest.plugins -join ',') 中文路径解压、清单、程序集与依赖验证；不含主程序、模型或用户数据。"
+    return
+}
 $info = [Diagnostics.ProcessStartInfo]::new()
 $info.FileName = Join-Path $package 'AudioPlayer.exe'
 $info.WorkingDirectory = $testRoot
@@ -34,15 +38,14 @@ $info.Environment['PYTHONPATH'] = Join-Path $testRoot 'absent-python-packages'
 $info.Environment['HF_HUB_OFFLINE'] = '1'
 $process = [Diagnostics.Process]::Start($info)
 try {
-    if (!$process.WaitForExit(60000)) { $process.Kill($true); $process.WaitForExit(); throw '无模型包自检超时。' }
+    if (!$process.WaitForExit(60000)) { $process.Kill($true); $process.WaitForExit(); throw '交付包自检超时。' }
     $reportPath = Join-Path $package 'data/portable-check.json'
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
-    if ($process.ExitCode -ne 0 -or !$report.localPython -or !$report.report.CpuReady -or $report.modelCount -ne 0) { throw ('无模型包自检失败：' + ($report | ConvertTo-Json -Depth 8)) }
+    if ($process.ExitCode -ne 0 -or !$report.localPython -or !$report.localModels -or !$report.report.CpuReady -or $report.modelCount -ne $manifest.models.Count) { throw ('交付包自检失败：' + ($report | ConvertTo-Json -Depth 8)) }
     if (!($report.report.Items | Where-Object { $_.Name -like 'OpenCC*' -and $_.Status -eq 'ok' })) { throw 'OpenCC 字典自检失败。' }
     $logs = @(Get-ChildItem -LiteralPath (Join-Path $package 'logs') -Filter 'AudioPlayer-*.log')
     $text = ($logs | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join "`n"
     if ($text -notmatch 'Application starting' -or $text -notmatch 'Application exiting; exitCode=0') { throw '启动退出日志缺失。' }
     Copy-Item -LiteralPath $reportPath -Destination (Join-Path $repo 'artifacts/delivery-check.json') -Force
-    Write-Host 'PASS: ZIP 无模型、无用户数据及日志；中文路径解压后，隔离开发机环境，自包含 .NET / Python / OpenCC 自检成功，Serilog 正常生成日志。'
-}
-finally { if (!$process.HasExited) { $process.Kill($true); $process.WaitForExit() }; $process.Dispose() }
+    Write-Host "PASS: 所选插件 [$($manifest.plugins -join ',')]、模型 [$($manifest.models -join ',')]，无用户数据；中文路径解压、自包含 .NET / Python / OpenCC 与日志自检成功。"
+} finally { if (!$process.HasExited) { $process.Kill($true); $process.WaitForExit() }; $process.Dispose() }

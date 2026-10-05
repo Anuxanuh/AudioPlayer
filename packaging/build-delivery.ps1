@@ -1,42 +1,58 @@
-param([string]$PackageDirectory = '', [string]$OutputZip = '')
+param([Parameter(Mandatory)][string]$PackageDirectory, [string]$OutputZip = '')
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 $repo = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+. (Join-Path $PSScriptRoot 'build-common.ps1')
 $artifacts = Join-Path $repo 'artifacts'
-if (!$PackageDirectory) { $PackageDirectory = Join-Path $artifacts 'ShengYu-Portable-win-x64' }
 $source = [IO.Path]::GetFullPath($PackageDirectory)
-if (!(Test-Path -LiteralPath (Join-Path $source 'portable.flag'))) { throw '请先构建完整便携目录。' }
-if (!$OutputZip) { $OutputZip = Join-Path $artifacts ('ShengYu-win-x64-NoModels-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip') }
+$manifest = Get-Content -LiteralPath (Join-Path $source 'package-manifest.json') -Raw | ConvertFrom-Json
+if ($manifest.kind -notin @('app','plugin') -or $null -eq $manifest.plugins -or $null -eq $manifest.models) { throw '请先使用根目录 build.cmd 构建发布目录。' }
+if (!$OutputZip) { $OutputZip = Join-Path $artifacts ('ShengYu-' + $manifest.kind + '-' + [Guid]::NewGuid().ToString('N') + '.zip') }
 $OutputZip = [IO.Path]::GetFullPath($OutputZip)
 if (Test-Path -LiteralPath $OutputZip) { throw "输出已经存在，不覆盖：$OutputZip" }
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputZip) | Out-Null
 $stageRoot = Join-Path $artifacts ('delivery-stage-' + [Guid]::NewGuid().ToString('N'))
-$stage = Join-Path $stageRoot 'ShengYu'
+$stage = if ($manifest.kind -eq 'app') { Join-Path $stageRoot 'ShengYu' } else { $stageRoot }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
-# Exclude only the application's root data/models/logs; Python package data is required.
-$excluded = @('data', 'models', 'logs', 'Downloads') | ForEach-Object { Join-Path $source $_ }
-& robocopy $source $stage /E /XD $excluded __pycache__ .cache .downloads /XF '*.pyc' /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-if ($LASTEXITCODE -gt 7) { throw '复制交付文件失败。' }
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README-delivery.md') -Destination (Join-Path $stage 'README.md')
-$manifest = Get-Content -LiteralPath (Join-Path $stage 'package-manifest.json') -Raw | ConvertFrom-Json
-$manifest.models = @()
+if ($manifest.kind -eq 'app') {
+    # Select plugins/models explicitly; never copy personal root data or download caches.
+    $excluded = @('data','models','plugins','logs','Downloads') | ForEach-Object { Join-Path $source $_ }
+    & robocopy $source $stage /E /XD $excluded __pycache__ .cache .downloads .backups /XF '*.pyc' /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -gt 7) { throw '复制交付文件失败。' }
+    $readme = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'README-delivery.md') -Raw
+    $modelText = if ($manifest.models.Count) { $manifest.models -join '、' } else { '无（可在程序内下载或选择本地模型）' }
+    $pluginText = if ($manifest.plugins.Count) { $manifest.plugins -join '、' } else { '无' }
+    $readme.Replace('{{MODELS}}', $modelText).Replace('{{PLUGINS}}', $pluginText) | Set-Content -LiteralPath (Join-Path $stage 'README.md') -Encoding utf8
+}
+$catalog = @(Get-PluginBuildCatalog $repo)
+foreach ($id in $manifest.plugins) {
+    $plugin = $catalog | Where-Object Id -eq $id
+    if (!$plugin) { throw "清单包含未知插件：$id" }
+    Copy-BuildTree (Join-Path $source "plugins/$id") (Join-Path $stage "plugins/$id")
+}
+foreach ($id in $manifest.models) {
+    if ($manifest.kind -ne 'app') { throw '独立插件包不能包含模型。' }
+    if (@((Get-Content -LiteralPath (Join-Path $repo 'recognition/model_catalog.json') -Raw | ConvertFrom-Json).id) -notcontains $id) { throw "清单包含未知模型：$id" }
+    $modelSource = Join-Path $source "models/faster-whisper-$id"
+    $files = @(Get-ModelBuildFiles $modelSource $id)
+    $destination = Join-Path $stage "models/faster-whisper-$id"
+    New-Item -ItemType Directory -Path $destination -Force | Out-Null
+    foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $modelSource $file) -Destination $destination }
+}
 $manifest.createdUtc = [DateTime]::UtcNow.ToString('o')
-$manifest | Add-Member -NotePropertyName flavor -NotePropertyValue 'no-models-no-user-data' -Force
-$manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'package-manifest.json') -Encoding utf8
+$flavor = if ($manifest.kind -eq 'plugin') { 'standalone-plugin' } elseif ($manifest.models.Count) { 'selected-models-no-user-data' } else { 'no-models-no-user-data' }
+$manifest | Add-Member -NotePropertyName flavor -NotePropertyValue $flavor -Force
+$manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $stage 'package-manifest.json') -Encoding utf8
+$null = Assert-PackageLayout $stage $repo
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($stageRoot, $OutputZip, [IO.Compression.CompressionLevel]::Optimal, $false)
 $archive = [IO.Compression.ZipFile]::OpenRead($OutputZip)
 try {
     $names = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-    if ($names | Where-Object { $_ -match '^ShengYu/(models|data|logs|Downloads)/|/(\.cache|\.downloads|__pycache__)/|\.pyc$' }) { throw '交付 ZIP 含有应排除的文件。' }
-    if ($names | Where-Object { $_ -match '(?i)WebView2|/session\.bin$' }) { throw '交付 ZIP 不应包含浏览器运行时或登录凭据。' }
-    foreach ($required in @('AudioPlayer.exe', 'AudioPlayer.dll', 'AudioPlayer.Plugin.Abstractions.dll', 'Serilog.dll', 'Serilog.Sinks.File.dll', 'python/python.exe', 'python/Lib/site-packages/opencc/opencc.py', 'recognition/transcribe.py', 'recognition/model_manager.py', 'plugins/bilibili/plugin.json', 'plugins/bilibili/AudioPlayer.Plugin.Bilibili.dll', 'plugins/bilibili/ffmpeg/ffmpeg.exe', 'plugins/bilibili/vendor/qrcode/__init__.py', 'plugins/bilibili/vendor/yt_dlp/__init__.py', 'README.md', 'portable.flag')) {
-        if ($names -notcontains ('ShengYu/' + $required)) { throw "交付 ZIP 缺少 $required" }
-    }
-    foreach ($required in @('plugins/novel/plugin.json','plugins/novel/AudioPlayer.Plugin.Novel.dll','plugins/novel/TagLibSharp.dll','plugins/novel/README.md')) {
-        if ($names -notcontains ('ShengYu/' + $required)) { throw "交付 ZIP 缺少 $required" }
-    }
+    $prefix = if ($manifest.kind -eq 'app') { 'ShengYu/' } else { '' }
+    if ($names -notcontains ($prefix + 'package-manifest.json') -or ($names | Where-Object { $_ -match '(?i)/session\.bin$|/(\.cache|\.downloads|__pycache__)/|\.pyc$|WebView2' })) { throw '交付 ZIP 含有错误或未排除的文件。' }
     $entries = $archive.Entries.Count
-}
-finally { $archive.Dispose() }
+} finally { $archive.Dispose() }
 $hash = (Get-FileHash -LiteralPath $OutputZip -Algorithm SHA256).Hash.ToLowerInvariant()
 ($hash + '  ' + [IO.Path]::GetFileName($OutputZip)) | Set-Content -LiteralPath ($OutputZip + '.sha256') -Encoding ascii
-[pscustomobject]@{ Zip = $OutputZip; MiB = [math]::Round((Get-Item -LiteralPath $OutputZip).Length / 1MB, 2); Entries = $entries; SHA256 = $hash; StagingDirectory = $stage } | ConvertTo-Json
+[pscustomobject]@{ Zip = $OutputZip; MiB = [math]::Round((Get-Item -LiteralPath $OutputZip).Length / 1MB, 2); Entries = $entries; SHA256 = $hash; StagingDirectory = $stage; Plugins = @($manifest.plugins); Models = @($manifest.models) } | ConvertTo-Json

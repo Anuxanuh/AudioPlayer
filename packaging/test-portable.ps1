@@ -22,7 +22,8 @@ if (!(Test-Path -LiteralPath $SampleAudio)) { throw '缺少用于真实识别验
 if (Test-Path -LiteralPath $relocated) { throw '临时移动目录已经存在。' }
 $process = $null
 $moved = $false
-$expectedCount = @(Get-Content -LiteralPath (Join-Path $repo 'recognition/model_catalog.json') -Raw | ConvertFrom-Json).Count
+$expectedCount = @( (Get-Content -LiteralPath (Join-Path $original 'package-manifest.json') -Raw | ConvertFrom-Json).models ).Count
+if ($expectedCount -eq 0) { throw '真实识别移动验证需要包含至少一个模型的发布目录；无模型 ZIP 请用 test-delivery.ps1。' }
 try {
     Move-Item -LiteralPath $original -Destination $relocated
     $moved = $true

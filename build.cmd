@@ -10,10 +10,10 @@ echo https://learn.microsoft.com/powershell/scripting/install/installing-powersh
 set "BUILD_EXIT=1"
 goto finish
 :run
-"%BUILD_PWSH%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0build.ps1"
+"%BUILD_PWSH%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0build.ps1" %*
 set "BUILD_EXIT=%ERRORLEVEL%"
 :finish
 echo.
 if not "%BUILD_EXIT%"=="0" echo BUILD FAILED. See the error and build log above.
-if /i not "%~1"=="--no-pause" pause
+if "%~1"=="" pause
 exit /b %BUILD_EXIT%
