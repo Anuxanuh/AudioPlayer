@@ -6,14 +6,15 @@ namespace AudioPlayer.Services;
 
 public sealed class OnlineModelService
 {
-    public async Task RunAsync(string python, string modelRoot, string? downloadId, Action<JsonElement> onEvent, CancellationToken token)
+    public async Task RunAsync(string python, string modelRoot, string? downloadId, Action<JsonElement> onEvent, CancellationToken token, bool translation = false)
     {
         var start = new ProcessStartInfo(python)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
         };
-        foreach (string argument in new[] { "-u", Path.Combine(AppContext.BaseDirectory, "recognition", "model_manager.py"), "--root", Path.GetFullPath(modelRoot) }) start.ArgumentList.Add(argument);
+        foreach (string argument in new[] { "-I", "-X", "utf8", "-u", Path.Combine(AppContext.BaseDirectory, "recognition", "model_manager.py"), "--root", Path.GetFullPath(modelRoot) }) start.ArgumentList.Add(argument);
+        if (translation) start.ArgumentList.Add("--translation");
         if (downloadId is null) start.ArgumentList.Add("--list");
         else { start.ArgumentList.Add("--download"); start.ArgumentList.Add(downloadId); }
         start.Environment["PYTHONUTF8"] = "1";

@@ -19,6 +19,7 @@
     <Resource Include="Assets/player.ico" />
     <Resource Include="Assets/player.png" />
     <Content Include="..\recognition\transcribe.py" Link="recognition\transcribe.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\recognition\translate_lyrics.py" Link="recognition\translate_lyrics.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\recognition\gpu_runtime.py" Link="recognition\gpu_runtime.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\recognition\inspect_environment.py" Link="recognition\inspect_environment.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\recognition\model_catalog.json" Link="recognition\model_catalog.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

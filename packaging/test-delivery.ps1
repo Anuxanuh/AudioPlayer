@@ -10,6 +10,10 @@ $package = if (Test-Path -LiteralPath (Join-Path $testRoot 'ShengYu/package-mani
 $manifest = Assert-PackageLayout $package $repo
 foreach ($id in $manifest.models) { $null = @(Get-ModelBuildFiles (Join-Path $package "models/faster-whisper-$id") $id -VerifyHash) }
 if ($manifest.kind -eq 'app') { $PythonPath = Join-Path $package 'python/python.exe' }
+if ($manifest.kind -eq 'app') {
+    & $PythonPath -I -X utf8 -c 'import ctranslate2,sentencepiece,py3langid; assert py3langid.classify("This is an English sentence.")[0] == "en"; from pathlib import Path; import sys; assert Path(sys.argv[1]).is_file(); print("Offline translation and language detection runtime OK")' (Join-Path $package 'recognition/translate_lyrics.py')
+    if ($LASTEXITCODE -ne 0) { throw '离线歌词翻译依赖不完整。' }
+}
 if ($manifest.plugins -contains 'bilibili') {
     if (!$PythonPath) { $PythonPath = Join-Path $repo 'runtime/python/python.exe' }
     $plugin = Join-Path $package 'plugins/bilibili'

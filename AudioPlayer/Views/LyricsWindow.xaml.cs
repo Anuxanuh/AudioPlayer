@@ -72,18 +72,21 @@ public partial class LyricsWindow : Window
         if (!_vertical) return;
         double lineHeight = _settings.FontSize * 1.25;
         int perColumn = Math.Max(1, (int)((VerticalHeight - 80) / lineHeight));
-        var glyphs = new List<string>();
-        var enumerator = StringInfo.GetTextElementEnumerator(_text.Replace("\r", "").Replace("\n", " "));
-        while (enumerator.MoveNext()) glyphs.Add(enumerator.GetTextElement());
-        foreach (var column in glyphs.Chunk(perColumn))
+        foreach (string paragraph in _text.Replace("\r", "").Split('\n'))
         {
-            VerticalColumns.Children.Add(new TextBlock
+            var glyphs = new List<string>();
+            var enumerator = StringInfo.GetTextElementEnumerator(paragraph);
+            while (enumerator.MoveNext()) glyphs.Add(enumerator.GetTextElement());
+            foreach (var column in glyphs.Chunk(perColumn))
             {
-                Text = string.Join("\n", column), TextAlignment = TextAlignment.Center, FlowDirection = FlowDirection.LeftToRight,
-                FontSize = LyricText.FontSize, FontFamily = LyricText.FontFamily, FontWeight = FontWeights.SemiBold,
-                Foreground = LyricText.Foreground, LineHeight = lineHeight, LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
-                Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Top
-            });
+                VerticalColumns.Children.Add(new TextBlock
+                {
+                    Text = string.Join("\n", column), TextAlignment = TextAlignment.Center, FlowDirection = FlowDirection.LeftToRight,
+                    FontSize = LyricText.FontSize, FontFamily = LyricText.FontFamily, FontWeight = FontWeights.SemiBold,
+                    Foreground = LyricText.Foreground, LineHeight = lineHeight, LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+                    Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Top
+                });
+            }
         }
     }
     private IReadOnlyList<Rect> WorkAreas()
@@ -123,6 +126,7 @@ public partial class LyricsWindow : Window
             double top = !reset && _settings.LyricTop is double y && double.IsFinite(y) ? y : defaultTop;
             var bounds = DesktopLyricsPlacement.Constrain(new Rect(left, top, Width, Height), reset ? new[] { area } : WorkAreas());
             Left = bounds.Left; Top = bounds.Top; Width = bounds.Width; Height = bounds.Height;
+            LyricText.Width = Math.Max(1, Width - 36);
         }
         finally { _placing = false; }
         if (_source is not null) SavePosition();

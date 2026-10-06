@@ -41,7 +41,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $Ou
 if (Test-Path -LiteralPath (Join-Path $repo 'licenses')) { Copy-BuildTree (Join-Path $repo 'licenses') (Join-Path $OutputDirectory 'licenses') }
 'Portable: keep this directory together. Settings are stored in data; Python and .NET are bundled.' | Set-Content -LiteralPath (Join-Path $OutputDirectory 'portable.flag') -Encoding utf8
 @{ kind = 'app'; createdUtc = [DateTime]::UtcNow.ToString('o'); architecture = 'win-x64'; selfContainedDotNet = $true; python = '3.13.16'; plugins = @($selectedPlugins); models = @($selectedModels); vcCrt = (Split-Path -Leaf $VcCrtDirectory) } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'package-manifest.json') -Encoding utf8
-& (Join-Path $OutputDirectory 'python/python.exe') -I -X utf8 -c 'from faster_whisper import WhisperModel; import onnxruntime,ctranslate2,av; from opencc import OpenCC; assert OpenCC("t2s").convert("繁體中文") == "繁体中文"; print("Portable package Python and OpenCC ready")'
+& (Join-Path $OutputDirectory 'python/python.exe') -I -X utf8 -c 'from faster_whisper import WhisperModel; import onnxruntime,ctranslate2,av,sentencepiece,py3langid; assert py3langid.classify("This is an English sentence.")[0] == "en"; from opencc import OpenCC; assert OpenCC("t2s").convert("繁體中文") == "繁体中文"; print("Portable package Python, translation and OpenCC ready")'
 if ($LASTEXITCODE -ne 0) { throw '发布目录中的 Python 检查失败。' }
 $null = Assert-PackageLayout $OutputDirectory $repo
 Write-Host "便携目录已生成：$OutputDirectory"

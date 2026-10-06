@@ -80,6 +80,9 @@ public sealed class StateStore
         s.ModelId = string.IsNullOrWhiteSpace(s.ModelId) ? "tiny" : s.ModelId;
         s.Language = string.IsNullOrWhiteSpace(s.Language) ? "auto" : s.Language;
         if (!Enum.IsDefined(s.Mode)) s.Mode = PlayMode.Sequential;
+        if (!Enum.IsDefined(s.LyricDisplayMode)) s.LyricDisplayMode = LyricDisplayMode.Original;
+        if (!LyricTranslation.IsLanguage(s.TranslationTargetLanguage)) s.TranslationTargetLanguage = "zh";
+        s.TranslationModelPath ??= "";
     }
 
     public void Save(PlayerState state)
@@ -110,6 +113,7 @@ public sealed class StateStore
         {
             settings.PythonPath = expand ? _paths.ExpandExecutable(settings.PythonPath ?? "python") : _paths.Store(settings.PythonPath);
             settings.ModelPath = ConvertPath(settings.ModelPath);
+            settings.TranslationModelPath = ConvertPath(settings.TranslationModelPath);
             settings.ModelsDirectory = ConvertPath(settings.ModelsDirectory);
         }
         if (state.Playlists is null) return;

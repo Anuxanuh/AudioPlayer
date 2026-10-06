@@ -32,7 +32,7 @@ public static class ModelCatalog
             try
             {
                 string name = Path.GetFileName(directory);
-                if (name.StartsWith('.') || name is "blobs" or "refs" or "__pycache__") return;
+                if (name.StartsWith('.') || name is "blobs" or "refs" or "__pycache__" || name.Equals("translation", StringComparison.OrdinalIgnoreCase)) return;
                 string id = name.Contains("--") ? name.Split("--")[^1] : name;
                 if (id.StartsWith("faster-whisper-", StringComparison.OrdinalIgnoreCase)) id = id[15..];
                 bool namedModel = descriptions.ContainsKey(id) || name.StartsWith("faster-whisper-", StringComparison.OrdinalIgnoreCase) || name.StartsWith("models--", StringComparison.OrdinalIgnoreCase);

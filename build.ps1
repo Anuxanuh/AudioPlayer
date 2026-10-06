@@ -129,7 +129,8 @@ for line in Path(sys.argv[1]).read_text(encoding='utf-8-sig').splitlines():
     if line.strip() and not line.startswith('#'):
         name, expected = line.strip().split('==')
         assert version(name) == expected, f'{name}: expected {expected}, installed {version(name)}'
-import faster_whisper, onnxruntime, ctranslate2, av
+import faster_whisper, onnxruntime, ctranslate2, av, sentencepiece, py3langid
+assert py3langid.classify('This is an English sentence.')[0] == 'en'
 from opencc import OpenCC
 assert OpenCC('t2s').convert('繁體中文') == '繁体中文'
 print('Python pinned dependencies and OpenCC OK')

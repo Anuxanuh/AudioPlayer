@@ -4,7 +4,11 @@ using System.Text.RegularExpressions;
 
 namespace AudioPlayer.Services;
 
-public sealed record LyricLine(TimeSpan Time, string Text);
+public sealed record LyricLine(TimeSpan Time, string Text)
+{
+    public string Translation { get; init; } = "";
+    public string DisplayText => string.IsNullOrWhiteSpace(Translation) ? Text : Text + "\n" + Translation;
+}
 
 public sealed class LrcDocument
 {
@@ -24,9 +28,11 @@ public sealed class LrcDocument
             string content = Timestamp.Replace(raw, "").Trim();
             foreach (Match stamp in stamps)
             {
-                double seconds = int.Parse(stamp.Groups[1].Value, CultureInfo.InvariantCulture) * 60 + int.Parse(stamp.Groups[2].Value, CultureInfo.InvariantCulture);
-                if (stamp.Groups[3].Success) seconds += double.Parse("0." + stamp.Groups[3].Value, CultureInfo.InvariantCulture);
-                lines.Add(new LyricLine(TimeSpan.FromMilliseconds(Math.Max(0, seconds * 1000 + offsetMs)), content));
+                long milliseconds = long.Parse(stamp.Groups[1].Value, CultureInfo.InvariantCulture) * 60000
+                    + int.Parse(stamp.Groups[2].Value, CultureInfo.InvariantCulture) * 1000;
+                if (stamp.Groups[3].Success) milliseconds += int.Parse(stamp.Groups[3].Value.PadRight(3, '0'), CultureInfo.InvariantCulture);
+                // LRC has integer millisecond precision; floating-point seconds can break bilingual pairing.
+                lines.Add(new LyricLine(TimeSpan.FromTicks(Math.Max(0, milliseconds + (long)offsetMs) * TimeSpan.TicksPerMillisecond), content));
             }
         }
         return new LrcDocument(lines.OrderBy(l => l.Time).ToArray());

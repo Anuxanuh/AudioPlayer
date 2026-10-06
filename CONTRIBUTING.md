@@ -27,6 +27,9 @@ dotnet run --project AudioPlayer/AudioPlayer.csproj -c Release
 
 # 下载模型目录中的全部模型
 .venv/Scripts/python.exe recognition/download_model.py --all --output models
+
+# 下载独立的歌词翻译模型（约 930 MiB）
+.venv/Scripts/python.exe recognition/model_manager.py --translation --root models/translation --download m2m100-418M
 ```
 
 依赖安装和模型下载需要联网。模型列表定义在 [model_catalog.json](recognition/model_catalog.json)，下载脚本保存来源、固定提交、文件大小和哈希清单。模型权重、虚拟环境及下载缓存受 Git 忽略，不应提交到仓库。
@@ -92,9 +95,14 @@ dotnet run --project AudioPlayer.Tests -c Release -- --bili-encoding --bili-sele
 
 ```powershell
 dotnet run --project AudioPlayer.Tests -c Release -- --python runtime/python/python.exe --offline-model models/faster-whisper-tiny --speech 'C:/audio/sample.wav'
+
+# 歌词翻译的时间轴、WPF、进程取消与真实本地模型集成测试
+dotnet run --project AudioPlayer.Tests -c Release -- --translation --translation-python runtime/python/python.exe --translation-model models/translation/m2m100-418M
 ```
 
 `--native` 会创建托盘和桌面歌词窗口，用于检查原生窗口行为；`--online-models` 会联网查询、下载和校验模型，需与 `--python` 一起使用；`--bili-qr` 会请求 Bilibili 二维码。测试输出保存在 `artifacts/tests/`。
+
+歌词翻译使用 `recognition/translate_lyrics.py` 的 UTF-8 JSON 标准输入／输出协议，由 C# 端保留时间轴并在完整成功后写入 LRC。py3langid 使用随库数据自动判断原文语言，翻译使用本地 CTranslate2 模型和 SentencePiece，不依赖 Transformers、PyTorch 或远程模型代码。测试包括显示模式触发翻译、切歌取消、识别完成后启动翻译、已有译文复用及独立批量队列。省略 `--translation-model` 可仅检查进程与界面，不加载真实翻译权重。
 
 ### 发行包自检
 

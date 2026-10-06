@@ -44,6 +44,11 @@ internal static partial class Program
             Test("Portable state: internal paths survive directory relocation", PortableState);
             Test("Models: only complete model folders become selections", Models);
             Test("Covers: embedded artwork, sidecar fallback and unlocked files", Covers);
+            if (args.Contains("--translation"))
+            {
+                Test("Translation: pairing, language filenames, timestamp roundtrip and portable preferences", TranslationCore);
+                Test("Translation: WPF modes, language/song changes, click seek and desktop layouts", TranslationUi);
+            }
             if (args.Contains("--exit")) Test("Exit: direct close, repeated close, pending recognition and tray shutdown", ExitScenarios);
             if (args.Contains("--novel")) Test("Novel: parsing, anchors, gaps, cache, tracking and large indexes", NovelCore);
             if (args.Contains("--novel-ui")) Test("Novel: real plugin page, bindings, preview correction and cache operations", NovelUi);
@@ -60,6 +65,13 @@ internal static partial class Program
             }
             if (args.Contains("--media")) Test("Audio: WAV opens, plays, pauses, seeks and ends", Media);
             int pythonIndex = Array.IndexOf(args, "--python");
+            int translationPythonIndex = Array.IndexOf(args, "--translation-python");
+            if (translationPythonIndex >= 0)
+            {
+                Test("Translation: real UTF-8 subprocess, cancellation, partial failure and existing file protection", () => TranslationProcesses(args[translationPythonIndex + 1]));
+                int translationModelIndex = Array.IndexOf(args, "--translation-model");
+                if (translationModelIndex >= 0) Test("Translation: actual offline M2M100 to sibling LRC", () => TranslationRealModel(args[translationPythonIndex + 1], args[translationModelIndex + 1]));
+            }
             if (pythonIndex >= 0 && pythonIndex + 1 < args.Length)
             {
                 Test("Recognition: real subprocess, UTF-8 paths, failure/cancellation keep old LRC", () => ProcessTests(args[pythonIndex + 1]));
@@ -169,7 +181,7 @@ internal static partial class Program
         var startBatch = (Button)window.FindName("StartBatchButton");
         var batchBounds = startBatch.TransformToAncestor(content).TransformBounds(new Rect(startBatch.RenderSize));
         Assert(batchBounds.Bottom < 565 && ((ListBox)window.FindName("RecognitionList")).ActualHeight > 40, "Batch controls must remain visible at minimum size");
-        tabs.SelectedIndex = 2;
+        tabs.SelectedItem = window.FindName("SettingsTab");
         var simplified = (CheckBox)window.FindName("SimplifiedChineseCheckBox");
         simplified.IsChecked = false;
         Assert(!((PlayerViewModel)window.DataContext).Settings.RecognizeToSimplified, "Simplified checkbox must update the persisted setting");
@@ -361,7 +373,7 @@ internal static partial class Program
         string json = File.ReadAllText(Path.Combine(original, "data", "state.json"));
         Assert(json.Contains("python/python.exe") && !json.Contains(original.Replace("\\", "\\\\")), "Saved internal paths must be relative");
         Assert(Path.IsPathRooted(state.Settings.PythonPath), "Saving changed live settings");
-        Directory.Move(original, moved); // Both paths are generated under this test's private artifact directory.
+        MoveTestDirectory(original, moved);
         var loaded = new StateStore(Path.Combine(moved, "data"), moved).Load();
         Assert(loaded.Settings.PythonPath == Path.Combine(moved, "python", "python.exe"), "Python did not relocate");
         Assert(loaded.Playlists[0].Tracks[0].FilePath == Path.Combine(moved, "Music", "歌曲.wav"), "Music did not relocate");
@@ -369,6 +381,17 @@ internal static partial class Program
         Assert(loaded.Settings.ModelsDirectory == Path.Combine(moved, "models"), "Models root did not relocate");
     }
 
+    private static void MoveTestDirectory(string source, string destination)
+    {
+        string root = Path.GetFullPath(_root) + Path.DirectorySeparatorChar;
+        Assert(new[] { source, destination }.All(path => Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase)), "Directory moves must remain within this test's artifacts");
+        for (int attempt = 0; ; attempt++)
+        {
+            try { Directory.Move(source, destination); return; }
+            catch (IOException ex) when (attempt < 20 && (ex.HResult & 0xffff) is 5 or 32)
+            { Thread.Sleep(100); } // Windows indexing/scanning may briefly hold freshly created directories.
+        }
+    }
     private static void Models()
     {
         string root = Path.Combine(_root, "model-catalog");
@@ -415,6 +438,7 @@ internal static partial class Program
         Complete("models--Example--faster-whisper-custom/snapshots/commit2");
         string refs = Path.Combine(root, "models--Example--faster-whisper-custom", "refs"); Directory.CreateDirectory(refs); File.WriteAllText(Path.Combine(refs, "main"), "commit1");
         Complete(".downloads/faster-whisper-hidden"); Complete("faster-whisper-base.en");
+        Complete("translation/m2m100-418M");
         for (int i = 0; i < 3; i++) Refresh();
         Assert(picker.Items.Count == 9 && view.Settings.ModelId == "small" && ((LocalModel)picker.SelectedItem).Id == "small", "Refreshing after manual additions must keep all models and the selected one");
         Assert(view.Models.Single(m => m.Id == "custom").DirectoryPath == snapshot, "Hugging Face cache should choose refs/main and not duplicate snapshots");

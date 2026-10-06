@@ -20,9 +20,17 @@
        <Button.Template><ControlTemplate TargetType="Button"><ContentPresenter HorizontalAlignment="Stretch"/></ControlTemplate></Button.Template>
       <Border Padding="12,12" CornerRadius="10" Margin="0,2,6,2">
        <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="Transparent"/><Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#DDE9E0"/></Trigger><DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="Background" Value="#D4E5DB"/></DataTrigger></Style.Triggers></Style></Border.Style>
-       <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" FontSize="21" LineHeight="31">
+       <StackPanel>
+       <TextBlock Text="{Binding OriginalText}" TextWrapping="Wrap" FontSize="21" LineHeight="31">
         <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="#6C8178"/><Setter Property="FontWeight" Value="Normal"/><Style.Triggers><DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="Foreground" Value="#145A4C"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
        </TextBlock>
+       <TextBlock Text="{Binding TranslationText}" TextWrapping="Wrap" FontSize="17" LineHeight="26" Margin="0,5,0,0">
+        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="#70837B"/><Style.Triggers>
+         <DataTrigger Binding="{Binding IsCurrent}" Value="True"><Setter Property="Foreground" Value="#176E61"/></DataTrigger>
+         <DataTrigger Binding="{Binding TranslationText}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+        </Style.Triggers></Style></TextBlock.Style>
+       </TextBlock>
+       </StackPanel>
       </Border>
       </Button>
      </DataTemplate></ItemsControl.ItemTemplate>

@@ -143,7 +143,9 @@ public partial class SynchronizedLyricsView : UserControl
     public sealed class LyricRow(LyricLine line) : ObservableObject
     {
         public TimeSpan Time => line.Time;
-        public string DisplayText => string.IsNullOrWhiteSpace(line.Text) ? "♪" : line.Text;
+        public string DisplayText => string.IsNullOrWhiteSpace(line.DisplayText) ? "♪" : line.DisplayText;
+        public string OriginalText => string.IsNullOrWhiteSpace(line.Text) ? "♪" : line.Text;
+        public string TranslationText => line.Translation;
         public string Timestamp => $"{(int)line.Time.TotalMinutes:00}:{line.Time.Seconds:00}";
         private bool _isCurrent;
         public bool IsCurrent { get => _isCurrent; set => Set(ref _isCurrent, value); }

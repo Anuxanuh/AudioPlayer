@@ -479,7 +479,35 @@
 						</Grid>
 					</Border>
 				</TabItem>
-				<TabItem>
+				<TabItem x:Name="TranslationTab">
+					<TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8F2;" FontFamily="Segoe Fluent Icons" FontSize="18" Margin="0,0,12,0"/><TextBlock Text="歌词翻译"/></StackPanel></TabItem.Header>
+					<Border Style="{StaticResource Card}"><Grid>
+						<Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+						<StackPanel Margin="0,0,0,16">
+							<TextBlock Text="批量离线翻译" FontSize="24" FontWeight="SemiBold"/>
+							<TextBlock Text="自动识别原文语言 · 保留时间轴 · 译文保存到歌曲名.语言.lrc" Style="{StaticResource SecondaryText}" Margin="0,6,0,8"/>
+							<DockPanel><Button DockPanel.Dock="Right" Content="翻译设置" Click="TranslationSettings_Click"/>
+								<TextBlock Text="{Binding Settings.TranslationTargetLanguage, StringFormat=目标语言：{0} · 在设置页面更改}" VerticalAlignment="Center" Foreground="{StaticResource AccentBrush}"/></DockPanel>
+						</StackPanel>
+						<WrapPanel Grid.Row="1" Margin="0,0,0,10">
+							<Button Content="批量添加音频 / LRC…" Style="{StaticResource ActionButton}" Click="ChooseTranslation_Click" IsEnabled="{Binding CanTranslate}"/>
+							<Button Content="使用列表选中项" Style="{StaticResource ActionButton}" Click="UseSelectedTranslation_Click" IsEnabled="{Binding CanTranslate}"/>
+							<Button Content="加入整个播放列表" Style="{StaticResource ActionButton}" Click="UsePlaylistTranslation_Click" IsEnabled="{Binding CanTranslate}"/>
+						</WrapPanel>
+						<ListBox x:Name="TranslationList" Grid.Row="2" ItemsSource="{Binding TranslationQueue}" SelectionMode="Extended" Background="#F0F5F1" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" AutomationProperties.Name="批量歌词翻译任务">
+							<ListBox.ItemTemplate><DataTemplate><Grid Margin="4,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
+								<StackPanel Margin="0,0,16,0"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Folder}" FontSize="11" TextTrimming="CharacterEllipsis" Foreground="{StaticResource MutedBrush}"/></StackPanel>
+								<StackPanel Grid.Column="1"><TextBlock Text="{Binding Status}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}" FontSize="12"/><ProgressBar Value="{Binding Percent}" Maximum="100" Height="4" Margin="0,7,0,0"/></StackPanel>
+							</Grid></DataTemplate></ListBox.ItemTemplate>
+						</ListBox>
+						<StackPanel Grid.Row="3" Margin="0,12,0,0">
+							<WrapPanel Margin="0,0,0,12"><Button Content="移除选中项" Click="RemoveTranslation_Click" IsEnabled="{Binding CanTranslate}" Style="{StaticResource ActionButton}"/><Button Content="清空队列" Click="ClearTranslation_Click" IsEnabled="{Binding CanTranslate}" Style="{StaticResource ActionButton}"/><CheckBox Content="覆盖已有同语言译文（默认跳过）" IsChecked="{Binding OverwriteTranslation}" IsEnabled="{Binding CanTranslate}" VerticalAlignment="Center"/></WrapPanel>
+							<WrapPanel Margin="0,0,0,12"><Button x:Name="StartTranslationButton" Content="开始批量翻译" Click="StartTranslation_Click" Style="{StaticResource PrimaryButton}" IsEnabled="{Binding CanTranslate}"/><Button Content="取消翻译" Click="CancelTranslation_Click" Style="{StaticResource ActionButton}" IsEnabled="{Binding TranslationBusy}"/></WrapPanel>
+						</StackPanel>
+						<StackPanel Grid.Row="4"><ProgressBar Value="{Binding TranslationPercent}" Maximum="100" Height="5" Margin="0,0,0,8"/><TextBlock Text="{Binding TranslationStatus}" TextWrapping="Wrap" MaxHeight="48" ToolTip="{Binding TranslationStatus}" FontSize="12"/></StackPanel>
+					</Grid></Border>
+				</TabItem>
+				<TabItem x:Name="SettingsTab">
 					<TabItem.Header>
 						<StackPanel Orientation="Horizontal">
 							<TextBlock Text="&#xE713;"
@@ -492,6 +520,23 @@
 					<ScrollViewer x:Name="SettingsScroll"
 								  VerticalScrollBarVisibility="Auto">
 						<StackPanel>
+							<Border Style="{StaticResource Card}" Margin="0,0,0,14">
+								<StackPanel>
+									<TextBlock Text="歌词翻译与显示" Style="{StaticResource SectionTitle}" />
+									<WrapPanel>
+										<ComboBox Width="164" Margin="0,0,12,10" ItemsSource="{Binding LyricDisplayModes}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Settings.LyricDisplayMode}" AutomationProperties.Name="歌词显示模式" />
+										<TextBlock Text="译文语言" VerticalAlignment="Center" Margin="0,0,8,10"/>
+										<ComboBox x:Name="TranslationLanguagePicker" Width="146" Margin="0,0,12,10" ItemsSource="{Binding TranslationLanguages}" DisplayMemberPath="Name" SelectedValuePath="Code" SelectedValue="{Binding Settings.TranslationTargetLanguage}" AutomationProperties.Name="译文语言" />
+									</WrapPanel>
+									<TextBlock Text="选择仅译文或双语显示后，缺少译文的歌曲会自动翻译；原文语言在本地自动识别。主界面和桌面歌词共用显示模式。已有译文直接读取。" Style="{StaticResource SecondaryText}" />
+									<TextBlock Text="本地翻译模型 · M2M100 418M" FontWeight="SemiBold" Margin="0,18,0,8"/>
+									<DockPanel IsEnabled="{Binding CanDownloadTranslationModel}"><Button Content="选择目录…" DockPanel.Dock="Right" Click="BrowseTranslationModel_Click" Margin="10,0,0,0"/><TextBox Text="{Binding Settings.TranslationModelPath, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="翻译模型目录"/></DockPanel>
+									<WrapPanel Margin="0,12,0,10"><Button Content="下载翻译模型" Click="DownloadTranslationModel_Click" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanDownloadTranslationModel}"/><Button Content="取消下载" Click="CancelTranslationDownload_Click" Style="{StaticResource ActionButton}" IsEnabled="{Binding TranslationModelBusy}"/><Button Content="模型来源" Click="TranslationSource_Click" Style="{StaticResource ActionButton}"/></WrapPanel>
+									<CheckBox Content="翻译使用 CUDA（默认 CPU）" IsChecked="{Binding Settings.TranslationUseCuda}" Margin="0,0,0,10"/>
+									<TextBlock Text="翻译模型与语音模型独立。首次下载约 930 MiB，之后可离线使用；建议预留 2 GB 可用内存。手动批量任务请使用左侧“歌词翻译”页面。" Style="{StaticResource SecondaryText}" Margin="0,0,0,10"/>
+									<ProgressBar Value="{Binding TranslationModelPercent}" Maximum="100" Height="4" Margin="0,0,0,8"/><TextBlock Text="{Binding TranslationModelStatus}" TextWrapping="Wrap" MaxHeight="72" ToolTip="{Binding TranslationModelStatus}" FontSize="12"/>
+								</StackPanel>
+							</Border>
 							<Border Style="{StaticResource Card}"
 									Margin="0,0,0,14">
 								<StackPanel>
@@ -851,6 +896,11 @@
 							<StackPanel Grid.Row="1"
 										Grid.ColumnSpan="3"
 										Margin="0,18,0,0">
+								<WrapPanel Margin="0,0,0,10">
+									<ComboBox Width="156" Margin="0,0,10,6" ItemsSource="{Binding LyricDisplayModes}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Settings.LyricDisplayMode}" AutomationProperties.Name="正在播放歌词显示模式" />
+									<Button Content="翻译设置" Click="TranslationSettings_Click" Padding="12,7" Margin="0,0,12,6" />
+									<TextBlock Text="{Binding TranslationHint}" FontSize="11" MaxWidth="500" MaxHeight="40" VerticalAlignment="Center" TextWrapping="Wrap" ToolTip="{Binding TranslationHint}" Foreground="{StaticResource MutedBrush}" />
+								</WrapPanel>
 								<DockPanel>
 									<Button DockPanel.Dock="Right"
 											Content="载入 LRC"

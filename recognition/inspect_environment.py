@@ -30,6 +30,15 @@ def inspect():
         if OpenCC("t2s").convert("繁體中文") != "繁体中文": raise RuntimeError("字典转换自检失败")
         add("OpenCC 繁体转简体", "ok", importlib.metadata.version("opencc-python-reimplemented") + " / 本地字典自检通过")
     except Exception as exc: add("OpenCC 繁体转简体", "warning", str(exc) + "；关闭繁转简后仍可识别。")
+    try:
+        import sentencepiece
+        add("歌词翻译分词器", "ok", "SentencePiece " + importlib.metadata.version("sentencepiece"))
+    except Exception as exc: add("歌词翻译分词器", "warning", str(exc) + "；本地翻译需要 SentencePiece，不影响语音识别。")
+    try:
+        import py3langid
+        if py3langid.classify("This is an English sentence.")[0] != "en": raise RuntimeError("原文语言识别自检失败")
+        add("原文语言自动识别", "ok", "py3langid " + importlib.metadata.version("py3langid") + " / 本地语言识别自检通过")
+    except Exception as exc: add("原文语言自动识别", "warning", str(exc) + "；自动翻译需要随包语言识别资源。")
     directories = configure_dll_directories()
     smi = shutil.which("nvidia-smi")
     if not smi:

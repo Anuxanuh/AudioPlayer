@@ -37,9 +37,17 @@ public sealed class Playlist : ObservableObject
 }
 
 public enum PlayMode { Sequential, Reverse, Shuffle, RepeatOne, Single }
+public enum LyricDisplayMode { Original, Translation, Bilingual }
 
 public sealed class PlayerSettings : ObservableObject
 {
+    private LyricDisplayMode _lyricDisplayMode;
+    public LyricDisplayMode LyricDisplayMode { get => _lyricDisplayMode; set => Set(ref _lyricDisplayMode, value); }
+    private string _translationTargetLanguage = "zh", _translationModelPath = "";
+    public string TranslationTargetLanguage { get => _translationTargetLanguage; set => Set(ref _translationTargetLanguage, value); }
+    public string TranslationModelPath { get => _translationModelPath; set => Set(ref _translationModelPath, value); }
+    private bool _translationUseCuda;
+    public bool TranslationUseCuda { get => _translationUseCuda; set => Set(ref _translationUseCuda, value); }
     public Dictionary<string, bool> EnabledPlugins { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private bool _CloseToTray = true;
     public bool CloseToTray { get => _CloseToTray; set => Set(ref _CloseToTray, value); }

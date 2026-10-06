@@ -5,6 +5,8 @@ click==8.5.0
 colorama==0.4.6
 ctranslate2==4.8.2
 faster-whisper==1.2.1
+sentencepiece==0.2.1
+py3langid==0.4.0
 filelock==4.0.8
 flatbuffers==25.12.19
 fsspec==2026.9.0

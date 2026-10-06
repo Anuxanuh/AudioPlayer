@@ -59,10 +59,11 @@ public partial class MainWindow : Window
     public MainWindow() : this(new StateStore(), true) { }
 
     // Integration can be disabled for deterministic XAML/render tests without a notification icon.
-    public MainWindow(StateStore store, bool integration, TranscriptionService? liveTranscriber = null)
+    public MainWindow(StateStore store, bool integration, TranscriptionService? liveTranscriber = null, LyricTranslationService? lyricTranslator = null)
     {
         _store = store;
         _liveTranscriber = liveTranscriber ?? new TranscriptionService();
+        _lyricTranslator = lyricTranslator ?? new LyricTranslationService();
         _integration = integration;
         _view = new PlayerViewModel(store.Load());
         LocalEngineLocator.ApplyDefaults(_view.Settings);
@@ -116,6 +117,13 @@ public partial class MainWindow : Window
             Log.Information("Setting changed; name={Setting}; desktopLyrics={DesktopLyrics}; locked={Locked}; vertical={Vertical}; simplified={Simplified}",
                 e.PropertyName, _view.Settings.DesktopLyrics, _view.Settings.LockLyrics, _view.Settings.VerticalLyrics, _view.Settings.RecognizeToSimplified);
         if (e.PropertyName == nameof(PlayerSettings.ModelsDirectory)) ReloadModels();
+        if (e.PropertyName is nameof(PlayerSettings.TranslationTargetLanguage) or nameof(PlayerSettings.TranslationModelPath) or nameof(PlayerSettings.TranslationUseCuda) or nameof(PlayerSettings.PythonPath))
+        {
+            CancelAutoTranslation();
+            if (_current is { } translationTrack) LoadTranslatedLyrics(translationTrack);
+            EnsureAutoTranslation(); UpdateLyrics();
+        }
+        if (e.PropertyName == nameof(PlayerSettings.LyricDisplayMode)) { EnsureAutoTranslation(); UpdateLyrics(); }
         if (e.PropertyName == nameof(PlayerSettings.ModelPath) && !_refreshingModels)
             _view.Settings.ModelId = _view.Models.FirstOrDefault(m => m.DirectoryPath == _view.Settings.ModelPath)?.Id ?? _view.Settings.ModelId;
         if (e.PropertyName == nameof(PlayerSettings.AutoRecognizePlaying))
@@ -383,8 +391,10 @@ public partial class MainWindow : Window
 
     private void StopCurrent()
     {
+        CancelAutoTranslation(); _view.TranslationHint = "";
         CancelLiveRecognition(); _liveAttemptedPath = null; _streamingLines.Clear(); _view.LiveRecognitionStatus = "";
         _audio.Stop(); _current = null; _lyrics = new(Array.Empty<LyricLine>());
+        _translatedLyrics = new(Array.Empty<LyricLine>());
         _coverRequest++; _view.Cover = null;
         _view.CurrentTitle = "让喜欢的声音，陪你一会儿";
         _view.CurrentInfo = "添加音频或拖入文件，开始聆听";
@@ -472,7 +482,9 @@ public partial class MainWindow : Window
 
     private void LoadLyrics(Track track)
     {
+        CancelAutoTranslation();
         _lyrics = new(Array.Empty<LyricLine>());
+        LoadTranslatedLyrics(track);
         string candidate = track.LyricsPath is { } custom && File.Exists(custom) ? custom : Path.ChangeExtension(track.FilePath, ".lrc");
         if (File.Exists(candidate))
         {
@@ -481,7 +493,7 @@ public partial class MainWindow : Window
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             { Log.Warning(ex, "Reading lyrics failed; path={Path}", candidate); _view.Status = "读取歌词失败：" + ex.Message; }
         }
-        UpdateLyrics();
+        EnsureAutoTranslation(); UpdateLyrics();
     }
 
     private static bool HasLyricsFile(Track track) =>
@@ -554,21 +566,24 @@ public partial class MainWindow : Window
 
     private void UpdateLyrics()
     {
-        _view.LyricLines = _lyrics.Lines;
-        if (_lyrics.Lines.Count == 0)
+        var lyrics = DisplayLyrics();
+        _view.LyricLines = lyrics.Lines;
+        if (lyrics.Lines.Count == 0)
         {
             _view.CurrentLyricIndex = -1;
             bool recognizing = _view.Settings.AutoRecognizePlaying && (_liveCancellation is not null || (_current is not null && _activeBatchPaths.Contains(_current.FilePath)));
             _view.CurrentLyric = recognizing ? "正在识别当前音频…" : _current is null ? "此刻，静待声音" : "纯粹聆听，也很好";
             _view.NextLyric = "支持同名 LRC 歌词，也可以在本机生成";
-            _lyricsWindow?.SetText(recognizing ? "正在识别…" : _current?.Title ?? "声屿 · 桌面歌词");
+            if (_current is not null && _view.Settings.LyricDisplayMode == LyricDisplayMode.Translation)
+            { _view.CurrentLyric = "正在准备译文"; _view.NextLyric = _view.TranslationHint; }
+            _lyricsWindow?.SetText(_view.Settings.LyricDisplayMode == LyricDisplayMode.Translation && _current is not null ? "正在准备译文…" : recognizing ? "正在识别…" : _current?.Title ?? "声屿 · 桌面歌词");
             return;
         }
-        int index = _lyrics.FindLine(_audio.Position + TimeSpan.FromSeconds(_view.Settings.LyricOffsetSeconds));
+        int index = lyrics.FindLine(_audio.Position + TimeSpan.FromSeconds(_view.Settings.LyricOffsetSeconds));
         _view.CurrentLyricIndex = index;
-        string text = index >= 0 ? _lyrics.Lines[index].Text : "";
+        string text = index >= 0 ? lyrics.Lines[index].DisplayText : "";
         _view.CurrentLyric = string.IsNullOrWhiteSpace(text) ? "♪" : text;
-        _view.NextLyric = _lyrics.Lines.Skip(index + 1).FirstOrDefault(l => !string.IsNullOrWhiteSpace(l.Text))?.Text ?? "";
+        _view.NextLyric = lyrics.Lines.Skip(index + 1).FirstOrDefault(l => !string.IsNullOrWhiteSpace(l.DisplayText))?.DisplayText ?? "";
         _lyricsWindow?.SetText(text);
     }
 
@@ -906,6 +921,7 @@ public partial class MainWindow : Window
         if (_disposed) return; // Windows session shutdown may have already disposed the window.
         _lifetime.Cancel();
         _clock.Stop(); _saveTimer.Stop();
+        await StopTranslationsAsync();
         await _plugins.StopAsync();
         _recognitionCancellation?.Cancel();
         if (_recognitionTask is not null) await _recognitionTask;
@@ -931,6 +947,7 @@ public partial class MainWindow : Window
         if (_disposed) return;
         _disposed = true;
         _plugins.Dispose();
+        CancelTranslations();
         _lifetime.Cancel();
         CancelLiveRecognition();
         _clock.Stop(); _saveTimer.Stop(); _audio.Dispose();

@@ -15,6 +15,15 @@ OpenCC Python 0.1.7 and its bundled dictionaries are distributed under Apache-2.
 Project: https://github.com/yichen0831/opencc-python (dictionaries from https://github.com/BYVoid/OpenCC).
 The license is included as OpenCC-Apache-2.0.txt and in the Python package metadata.
 Models retain their upstream README / license files and download-manifest.json.
+SentencePiece 0.2.1 is distributed under Apache-2.0 (https://github.com/google/sentencepiece).
+Its license is retained in python/Lib/site-packages/sentencepiece-*.dist-info/licenses.
+CTranslate2 is distributed under MIT (https://github.com/OpenNMT/CTranslate2).
+py3langid 0.4.0 and its bundled offline language identification resources are distributed
+under BSD-3-Clause; original langid.py code is BSD-2-Clause.
+Project: https://github.com/adbar/py3langid (licenses retained in Python package metadata).
+Optional M2M100 translation weights are downloaded separately, not bundled by default.
+Original model: https://huggingface.co/facebook/m2m100_418M (MIT).
+CTranslate2 model source: https://huggingface.co/michaelfeil/ct2fast-m2m100_418M (MIT).
 Bilibili plugin bundles yt-dlp 2026.8.19 (Unlicense), qrcode 8.2 (BSD), and
 FFmpeg n8.1.3-14-g330caae0c1 (LGPL-3.0) as a separate executable and DLLs.
 See plugins/bilibili/README.md, vendor/*.dist-info/licenses and ffmpeg/LICENSE.txt.

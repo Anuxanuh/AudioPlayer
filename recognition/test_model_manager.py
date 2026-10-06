@@ -11,6 +11,22 @@ from unittest.mock import patch
 import model_manager
 
 class ModelManagerTests(unittest.TestCase):
+    def test_translation_profile_downloads_separate_model_with_sentencepiece(self):
+        payload = {"model.bin": b"weights", "config.json": b"{}", "sentencepiece.bpe.model": b"spm", "shared_vocabulary.txt": b"__en__\n__zh__"}
+        files = [SimpleNamespace(rfilename=name, size=len(data), lfs=None) for name, data in payload.items()]
+        calls = []
+        def snapshot(repo, **kwargs):
+            calls.append((repo, kwargs))
+            for name, data in payload.items(): (Path(kwargs["local_dir"]) / name).write_bytes(data)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            with patch.multiple(model_manager, TRANSLATION=True, REQUIRED=tuple(payload), PATTERNS=tuple(payload)), patch.object(model_manager, "metadata", return_value=("a" * 40, files)), patch("huggingface_hub.snapshot_download", side_effect=snapshot), contextlib.redirect_stdout(io.StringIO()):
+                model_manager.download(root, "m2m100-418M")
+                self.assertTrue(model_manager.complete(root / "m2m100-418M"))
+            self.assertEqual(calls[0][0], "michaelfeil/ct2fast-m2m100_418M")
+            self.assertEqual(set(calls[0][1]["allow_patterns"]), set(payload))
+            self.assertFalse((root / "faster-whisper-m2m100-418M").exists())
+
     def test_download_pins_revision_verifies_and_installs_without_touching_complete_model(self):
         payload = {"model.bin": b"weights", "config.json": b"{}", "tokenizer.json": b"{}"}
         files = [SimpleNamespace(rfilename=name, size=len(data), lfs=SimpleNamespace(sha256=hashlib.sha256(data).hexdigest()) if name == "model.bin" else None) for name, data in payload.items()]

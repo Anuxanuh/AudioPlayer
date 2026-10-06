@@ -20,12 +20,18 @@ os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "30"
 PATTERNS = ("model.bin", "config.json", "tokenizer.json", "preprocessor_config.json", "vocabulary.*", "README.md", "LICENSE*")
 REQUIRED = ("model.bin", "config.json", "tokenizer.json")
 ENDPOINT = "https://huggingface.co"
+TRANSLATION = False
 
 def emit(kind, **data):
     print(json.dumps({"type": kind, **data}, ensure_ascii=False), flush=True)
 
 def catalog():
+    if TRANSLATION:
+        return [{"id": "m2m100-418M", "repo": "michaelfeil/ct2fast-m2m100_418M"}]
     return json.loads(Path(__file__).with_name("model_catalog.json").read_text(encoding="utf-8-sig"))
+
+def folder_name(model_id):
+    return model_id if TRANSLATION else "faster-whisper-" + model_id
 
 def complete(path):
     return all((path / name).is_file() and (path / name).stat().st_size > 0 for name in REQUIRED)
@@ -42,7 +48,7 @@ def browse(root):
     def one(model):
         try:
             revision, files = metadata(model)
-            return {**model, "revision": revision, "bytes": sum(f.size or 0 for f in files), "local": complete(root / ("faster-whisper-" + model["id"])), "error": ""}
+            return {**model, "revision": revision, "bytes": sum(f.size or 0 for f in files), "local": complete(root / folder_name(model["id"])), "error": ""}
         except Exception as exc:
             return {**model, "error": str(exc)}
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
@@ -79,7 +85,7 @@ def download(root, model_id):
     model = next((m for m in catalog() if m["id"] == model_id), None)
     if model is None: raise ValueError("请选择受支持的多语言模型。")
     root.mkdir(parents=True, exist_ok=True)
-    destination = root / ("faster-whisper-" + model_id)
+    destination = root / folder_name(model_id)
     if complete(destination):
         emit("completed", path=str(destination), message="本地模型已完整，无须重复下载。")
         return
@@ -111,14 +117,20 @@ def download(root, model_id):
     checked = verify_files(stage, files)
     (stage / "download-manifest.json").write_text(json.dumps({**model, "revision": revision, "files": checked}, ensure_ascii=False, indent=2), encoding="utf-8")
     install_stage(stage, destination, root)
-    emit("completed", path=str(destination), message=f"{model_id} 已下载并校验，可用于离线识别。")
+    emit("completed", path=str(destination), message=f"{model_id} 已下载并校验，可离线使用。")
 
 def main():
+    global TRANSLATION, PATTERNS, REQUIRED
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True)
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--download")
+    parser.add_argument("--translation", action="store_true", help="Download the separate M2M100 translation model")
     args = parser.parse_args()
+    TRANSLATION = args.translation
+    if TRANSLATION:
+        REQUIRED = ("model.bin", "config.json", "sentencepiece.bpe.model", "shared_vocabulary.txt")
+        PATTERNS = (*REQUIRED, "README.md", "LICENSE*")
     root = Path(args.root).expanduser().resolve()
     if args.list: browse(root)
     elif args.download: download(root, args.download)

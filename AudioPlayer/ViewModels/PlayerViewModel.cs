@@ -12,6 +12,23 @@ public sealed class PlayerViewModel : ObservableObject
 {
     public PlayerState State { get; }
     public PlayerSettings Settings => State.Settings;
+    public IReadOnlyList<TranslationLanguage> TranslationLanguages => LyricTranslation.Languages;
+    public IReadOnlyList<LyricDisplayOption> LyricDisplayModes => LyricTranslation.DisplayModes;
+    private string _translationHint = "";
+    public string TranslationHint { get => _translationHint; set => Set(ref _translationHint, value); }
+    public ObservableCollection<TranslationItem> TranslationQueue { get; } = new();
+    private bool _translationBusy, _overwriteTranslation, _translationModelBusy;
+    public bool TranslationBusy { get => _translationBusy; set { if (Set(ref _translationBusy, value)) Raise(nameof(CanTranslate)); } }
+    public bool CanTranslate => !TranslationBusy;
+    public bool OverwriteTranslation { get => _overwriteTranslation; set => Set(ref _overwriteTranslation, value); }
+    public bool TranslationModelBusy { get => _translationModelBusy; set { if (Set(ref _translationModelBusy, value)) Raise(nameof(CanDownloadTranslationModel)); } }
+    public bool CanDownloadTranslationModel => !TranslationModelBusy;
+    private string _translationStatus = "加入音频或 LRC，原文语言自动识别，输出同目录语言 LRC。", _translationModelStatus = "翻译在本机完成；首次使用请下载或选择 M2M100 模型。";
+    public string TranslationStatus { get => _translationStatus; set => Set(ref _translationStatus, value); }
+    public string TranslationModelStatus { get => _translationModelStatus; set => Set(ref _translationModelStatus, value); }
+    private double _translationPercent, _translationModelPercent;
+    public double TranslationPercent { get => _translationPercent; set => Set(ref _translationPercent, value); }
+    public double TranslationModelPercent { get => _translationModelPercent; set => Set(ref _translationModelPercent, value); }
     private IReadOnlyList<LocalModel> _models = Array.Empty<LocalModel>();
     public IReadOnlyList<LocalModel> Models { get => _models; set => Set(ref _models, value); }
     public IReadOnlyList<int> ParallelismOptions { get; } = new[] { 1, 2, 3, 4 };

@@ -28,6 +28,8 @@ public static class LocalEngineLocator
         if (!Directory.Exists(settings.ModelsDirectory) && Directory.Exists(settings.ModelPath))
             settings.ModelsDirectory = Path.GetDirectoryName(settings.ModelPath) ?? "";
         var models = ModelCatalog.Discover(settings.ModelsDirectory);
+        if (string.IsNullOrWhiteSpace(settings.TranslationModelPath)) settings.TranslationModelPath = string.IsNullOrWhiteSpace(settings.ModelsDirectory)
+            ? LyricTranslation.DefaultModelPath : Path.Combine(settings.ModelsDirectory, "translation", LyricTranslation.ModelId);
         if (!models.Any(m => m.DirectoryPath.Equals(settings.ModelPath, StringComparison.OrdinalIgnoreCase)))
             settings.ModelPath = (models.FirstOrDefault(m => m.Id == settings.ModelId) ?? models.FirstOrDefault(m => m.Id == "tiny") ?? models.FirstOrDefault())?.DirectoryPath ?? "";
     }
