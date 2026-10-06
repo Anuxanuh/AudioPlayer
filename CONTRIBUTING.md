@@ -79,6 +79,9 @@ dotnet run --project AudioPlayer.Tests -c Release -- --novel --plugins --exit
 # WPF 界面、歌词交互和真实播放接口（需要可用的桌面会话）
 dotnet run --project AudioPlayer.Tests -c Release -- --render --media --novel-ui --novel-host
 
+# 播放诊断：底层停滞、恢复、暂停排除、告警限频和实例切换
+dotnet run --project AudioPlayer.Tests -c Release -- --playback-diagnostics --novel-host
+
 # Bilibili 插件的编码和列表交互
 dotnet run --project AudioPlayer.Tests -c Release -- --bili-encoding --bili-selection
 

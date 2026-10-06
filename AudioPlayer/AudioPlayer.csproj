@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="AudioPlayer.Tests" />
     <ProjectReference Include="../AudioPlayer.Plugin.Abstractions/AudioPlayer.Plugin.Abstractions.csproj" />
     <PackageReference Include="TagLibSharp" Version="2.3.0" />
     <PackageReference Include="Serilog" Version="4.3.0" />

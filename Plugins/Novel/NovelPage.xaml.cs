@@ -296,15 +296,19 @@ public partial class NovelPage : UserControl, IDisposable
         if (track is null || segment.Missing) throw new InvalidOperationException("此片段音频缺失或已从播放列表删除。");
         await _host.PlayAsync(_playlistId, track.Id, segment.Start, token); SetStatus("正在播放：" + segment.FileName + " · " + segment.Range);
     }
-    private async void PlayChapter_Click(object sender, RoutedEventArgs e) => await RunAsync(async token =>
+    private async void PlayChapter_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) throw new InvalidOperationException("请先选择章节。");
-        string id = _selected.Id; int order = _selected.Order;
-        if (_map is null) await BuildMapAsync(false, token);
-        var segment = _map!.Segments.FirstOrDefault(s => s.ChapterId == id && !s.Missing);
-        if (segment is not null) await PlaySegmentAsync(segment, token);
-        else { var nearest = NearestAvailable(order); if (nearest is not null) Highlight(nearest); SetStatus(nearest is null ? "没有可播放片段。" : "本章音频不可用，已选中最近可用章节；点击播放本章继续。"); }
-    });
+        _context.Log("info", $"PlayChapter clicked; busy={_busy}; disposed={_disposed}; playlist={_playlistId}; chapter={_selected?.Id}; title={_selected?.Title}");
+        await RunAsync(async token =>
+        {
+            if (_selected is null) throw new InvalidOperationException("请先选择章节。");
+            string id = _selected.Id; int order = _selected.Order;
+            if (_map is null) await BuildMapAsync(false, token);
+            var segment = _map!.Segments.FirstOrDefault(s => s.ChapterId == id && !s.Missing);
+            if (segment is not null) await PlaySegmentAsync(segment, token);
+            else { var nearest = NearestAvailable(order); if (nearest is not null) Highlight(nearest); SetStatus(nearest is null ? "没有可播放片段。" : "本章音频不可用，已选中最近可用章节；点击播放本章继续。"); }
+        });
+    }
     private async void PlaySegment_Click(object sender, RoutedEventArgs e) => await RunAsync(token => SegmentsGrid.SelectedItem is ChapterSegment s ? PlaySegmentAsync(s, token) : throw new InvalidOperationException("请选择一个片段。"));
     private async void ChooseBook_Click(object sender, RoutedEventArgs e)
     {

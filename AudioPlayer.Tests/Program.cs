@@ -64,6 +64,7 @@ internal static partial class Program
                 Test("Lyrics: full document, wheel browsing, timed resume, backward seek and song reset", SynchronizedLyrics);
             }
             if (args.Contains("--media")) Test("Audio: WAV opens, plays, pauses, seeks and ends", Media);
+            if (args.Contains("--playback-diagnostics")) Test("Playback diagnostics: actual progress, stalled native playback, recovery, throttling and lifetime", PlaybackDiagnostics);
             int pythonIndex = Array.IndexOf(args, "--python");
             int translationPythonIndex = Array.IndexOf(args, "--translation-python");
             if (translationPythonIndex >= 0)
@@ -491,9 +492,10 @@ internal static partial class Program
         timer.Start(); Dispatcher.PushFrame(frame); timer.Stop();
         Assert(condition(), "Timed out waiting for dispatcher / media event");
     }
-    private static void WriteWave(string path)
+    private static void WriteWave(string path, int seconds = 3)
     {
-        const int sampleRate = 16000, seconds = 3, dataSize = sampleRate * seconds * 2;
+        const int sampleRate = 16000;
+        int dataSize = sampleRate * seconds * 2;
         using var writer = new BinaryWriter(File.Create(path));
         writer.Write(Encoding.ASCII.GetBytes("RIFF")); writer.Write(36 + dataSize); writer.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
         writer.Write(16); writer.Write((short)1); writer.Write((short)1); writer.Write(sampleRate); writer.Write(sampleRate * 2); writer.Write((short)2); writer.Write((short)16);

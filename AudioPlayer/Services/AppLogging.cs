@@ -33,6 +33,10 @@ public static class AppLogging
         Log.Information("Application starting; version={Version}; OS={OS}; runtime={Runtime}; architecture={Architecture}; base={BaseDirectory}",
             typeof(AppLogging).Assembly.GetName().Version, RuntimeInformation.OSDescription,
             RuntimeInformation.FrameworkDescription, RuntimeInformation.ProcessArchitecture, AppContext.BaseDirectory);
+        Log.Information("Application build identity; informationalVersion={InformationalVersion}; moduleId={ModuleId}; osVersion={OsVersion}; processors={ProcessorCount}; playbackDiagnostics={PlaybackDiagnostics}",
+            typeof(AppLogging).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion,
+            typeof(AppLogging).Assembly.ManifestModule.ModuleVersionId, Environment.OSVersion.VersionString, Environment.ProcessorCount, 1);
         _lastHour = DateTime.Now.ToString("yyyyMMddHH");
         // Roll and apply retention even while idle; at most one event per hour.
         _hourlyTimer = new Timer(_ =>

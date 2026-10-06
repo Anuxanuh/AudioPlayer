@@ -371,6 +371,7 @@ public partial class MainWindow : Window
 
     private void PlayTrack(Track track)
     {
+        Log.Information("Track playback requested; track={Track}; previousTrack={PreviousTrack}; previousMedia={PreviousMediaId}; audio={Audio}", track.Id, _current?.Id, _audio.MediaId, track.FilePath);
         CancelLiveRecognition(); _liveAttemptedPath = null; _streamingLines.Clear(); _view.LiveRecognitionStatus = "";
         _view.LyricLines = Array.Empty<LyricLine>(); _view.CurrentLyricIndex = -1;
         if (!File.Exists(track.FilePath)) { StopCurrent(); _view.Status = "文件已移动或不存在：" + track.FilePath; return; }
@@ -458,7 +459,7 @@ public partial class MainWindow : Window
     {
         if (!_audio.IsReady) return;
         double seconds = Math.Clamp(timestamp.TotalSeconds - _view.Settings.LyricOffsetSeconds, 0, _audio.Duration.TotalSeconds);
-        _audio.Seek(seconds);
+        _audio.Seek(seconds, "lyrics");
         _updatingSeek = true; SeekSlider.Value = seconds; _updatingSeek = false;
         _view.PositionText = FormatTime(TimeSpan.FromSeconds(seconds));
         UpdateLyrics();
@@ -470,14 +471,14 @@ public partial class MainWindow : Window
     {
         if (!_seeking) return;
         _seeking = false;
-        _audio.Seek(SeekSlider.Value);
+        _audio.Seek(SeekSlider.Value, "slider-drag");
         UpdateLyrics();
     }
     private void Seek_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (!_ready || _updatingSeek) return;
         _view.PositionText = FormatTime(TimeSpan.FromSeconds(e.NewValue));
-        if (!_seeking) _audio.Seek(e.NewValue);
+        if (!_seeking) _audio.Seek(e.NewValue, "slider-click");
     }
 
     private void LoadLyrics(Track track)
