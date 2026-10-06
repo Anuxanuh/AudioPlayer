@@ -42,6 +42,7 @@ internal static partial class Program
             Test("Logs: UTF-8 hourly files, exception details, seven-day retention", Logging);
             Test("Desktop lyrics: constrain to actual monitor work areas", DesktopPlacement);
             Test("Portable state: internal paths survive directory relocation", PortableState);
+            Test("Python: bundled/configured/system precedence, PATH, missing runtime and setup guidance", PythonEnvironments);
             Test("Models: only complete model folders become selections", Models);
             Test("Covers: embedded artwork, sidecar fallback and unlocked files", Covers);
             if (args.Contains("--translation"))
@@ -65,7 +66,9 @@ internal static partial class Program
             }
             if (args.Contains("--media")) Test("Audio: WAV opens, plays, pauses, seeks and ends", Media);
             if (args.Contains("--playback-diagnostics")) Test("Playback diagnostics: actual progress, stalled native playback, recovery, throttling and lifetime", PlaybackDiagnostics);
+            if (args.Contains("--playback-recovery")) Test("Playback recovery: initial seek, native stall, bounded reopen, pause, newer target and stop", PlaybackRecovery);
             int pythonIndex = Array.IndexOf(args, "--python");
+            if (pythonIndex >= 0 && pythonIndex + 1 < args.Length) args[pythonIndex + 1] = Path.GetFullPath(args[pythonIndex + 1]);
             int translationPythonIndex = Array.IndexOf(args, "--translation-python");
             if (translationPythonIndex >= 0)
             {

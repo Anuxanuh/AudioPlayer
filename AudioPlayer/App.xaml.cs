@@ -44,7 +44,10 @@ public partial class App : Application
         if (!_startMainWindow) return;
         if (e.Args.FirstOrDefault() == "--portable-check")
         {
-            Shutdown(await Services.PortableVerification.RunAsync(e.Args.Skip(1).FirstOrDefault()));
+            int pythonIndex = Array.IndexOf(e.Args, "--python-path");
+            string? pythonOverride = pythonIndex >= 0 && pythonIndex + 1 < e.Args.Length ? e.Args[pythonIndex + 1] : null;
+            string? sample = e.Args.Length > 1 && !e.Args[1].StartsWith("--", StringComparison.Ordinal) ? e.Args[1] : null;
+            Shutdown(await Services.PortableVerification.RunAsync(sample, pythonOverride));
             return;
         }
         _instance = new Services.SingleInstanceService();
@@ -60,6 +63,7 @@ public partial class App : Application
         MainWindow = window;
         _instance.StartListening(args => Dispatcher.InvokeAsync(() => window.ActivateFromLaunch(args)).Task.Unwrap());
         window.Show();
+        window.NotifyPythonEnvironment();
         if (e.Args.Length > 0) window.ImportPaths(e.Args);
     }
     protected override void OnExit(ExitEventArgs e)

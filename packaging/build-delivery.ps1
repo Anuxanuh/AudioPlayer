@@ -22,7 +22,9 @@ if ($manifest.kind -eq 'app') {
     $readme = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'README-delivery.md') -Raw
     $modelText = if ($manifest.models.Count) { $manifest.models -join '、' } else { '无（可在程序内下载或选择本地模型）' }
     $pluginText = if ($manifest.plugins.Count) { $manifest.plugins -join '、' } else { '无' }
-    $readme.Replace('{{MODELS}}', $modelText).Replace('{{PLUGINS}}', $pluginText) | Set-Content -LiteralPath (Join-Path $stage 'README.md') -Encoding utf8
+    $dotnetText = if ($manifest.selfContainedDotNet) { '已附带 .NET 桌面运行时，无须预装 .NET。' } else { '未附带 .NET 运行时，使用本机已安装的 .NET 10 Desktop Runtime x64。' }
+    $pythonText = if ($manifest.bundledPython -ne $false) { '已附带独立 Python、faster-whisper、翻译引擎和 OpenCC 字典，无须预装 Python。' } else { '未附带 Python 或识别／翻译依赖。程序自动查找本机 Python；没有时会提示自行准备，普通播放不受影响。准备方法见下方“本机 Python 环境”。' }
+    $readme.Replace('{{MODELS}}', $modelText).Replace('{{PLUGINS}}', $pluginText).Replace('{{DOTNET}}', $dotnetText).Replace('{{PYTHON}}', $pythonText) | Set-Content -LiteralPath (Join-Path $stage 'README.md') -Encoding utf8
 }
 $catalog = @(Get-PluginBuildCatalog $repo)
 foreach ($id in $manifest.plugins) {

@@ -51,7 +51,7 @@ public sealed class BatchTranscriptionService(string? scriptPath = null)
         string manifest = Path.Combine(Path.GetTempPath(), "shengyu-batch-" + Guid.NewGuid().ToString("N") + ".json");
         var start = new ProcessStartInfo
         {
-            FileName = python, UseShellExecute = false, CreateNoWindow = true,
+            FileName = PythonEnvironment.RequireExecutable(python), UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
         };

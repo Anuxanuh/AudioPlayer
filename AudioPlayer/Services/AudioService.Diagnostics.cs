@@ -18,9 +18,10 @@ public sealed partial class AudioService
     private double MediaElapsedMs => _diagnosticTime.GetElapsedTime(_mediaStarted).TotalMilliseconds;
 
     public AudioService() : this(TimeProvider.System) { }
-    internal AudioService(TimeProvider diagnosticTime)
+    internal AudioService(TimeProvider diagnosticTime, bool automaticRecovery = true)
     {
         _diagnosticTime = diagnosticTime;
+        _automaticRecovery = automaticRecovery;
         _diagnosticTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
         _diagnosticTimer.Tick += (_, _) => ObservePlayback();
     }
@@ -65,7 +66,7 @@ public sealed partial class AudioService
         if (IsCurrentEvent(player, mediaId, name)) WriteDiagnostic(name);
     }
 
-    // Observe only: a diagnostic must not seek, pause, reopen, or change the user's playback intent.
+    // All samples and recovery commands run on the same dispatcher as MediaPlayer.
     internal void ObservePlayback()
     {
         if (_player is null) return;
@@ -77,6 +78,11 @@ public sealed partial class AudioService
             if (sampleGapMs >= 5000) WriteDiagnostic("observation-delayed", LogEventLevel.Warning, sampleGapMs);
             if (!IsReady)
             {
+                if (_automaticRecovery && _recovering && MediaElapsedMs >= 20000)
+                {
+                    RecoveryFailed("恢复播放时打开音频超时，请检查文件是否可读取。");
+                    return;
+                }
                 if (_diagnosticTime.GetElapsedTime(_lastWarning, now).TotalSeconds >= (_stalled ? 30 : 5))
                 {
                     WriteDiagnostic("opening-pending", LogEventLevel.Warning, sampleGapMs);
@@ -91,12 +97,17 @@ public sealed partial class AudioService
                 if (!_progressObserved || _stalled)
                     WriteDiagnostic(_stalled ? "progress-resumed" : "progress-observed", LogEventLevel.Information, sampleGapMs);
                 _progressObserved = true; _stalled = false; _lastProgress = now;
+                PlaybackAdvanced(now);
             }
-            else if (_diagnosticTime.GetElapsedTime(_lastProgress, now).TotalSeconds >= 5 &&
-                (!_stalled || _diagnosticTime.GetElapsedTime(_lastWarning, now).TotalSeconds >= 30))
+            else
             {
-                WriteDiagnostic("progress-stalled", LogEventLevel.Warning, sampleGapMs);
-                _stalled = true; _lastWarning = now;
+                if (_diagnosticTime.GetElapsedTime(_lastProgress, now).TotalSeconds >= 5 &&
+                    (!_stalled || _diagnosticTime.GetElapsedTime(_lastWarning, now).TotalSeconds >= 30))
+                {
+                    WriteDiagnostic("progress-stalled", LogEventLevel.Warning, sampleGapMs);
+                    _stalled = true; _lastWarning = now;
+                }
+                if (RecoverIfStalled(now, position, sampleGapMs)) return;
             }
             _lastPosition = position;
         }
@@ -115,7 +126,8 @@ public sealed partial class AudioService
             {
                 Ready = IsReady, RequestedPlaying = IsPlaying, Ended = _ended,
                 PositionSeconds = player.Position.TotalSeconds, DurationSeconds = Duration.TotalSeconds,
-                RequestedRate = _playbackRate, NativeRate = player.SpeedRatio,
+                RequestedRate = _playbackRate, PlayerRate = player.SpeedRatio,
+                PendingPositionSeconds = _pendingPosition, RecoveryAttempt = _recoveryAttempts, Recovering = _recovering,
                 Buffering = player.IsBuffering, BufferingProgress = player.BufferingProgress,
                 DownloadProgress = player.DownloadProgress, player.HasAudio, player.HasVideo,
                 player.Volume, player.IsMuted,

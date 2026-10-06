@@ -113,9 +113,23 @@ function Assert-PackageLayout([string]$Directory, [string]$Repository) {
         if ($manifest.plugins.Count -ne 1 -or $manifest.models.Count -ne 0) { throw '独立插件包必须只含一个插件，不能包含模型。' }
         Assert-BuildItems @(Get-ChildItem -LiteralPath $Directory -Force | ForEach-Object Name) @('plugins','package-manifest.json') '独立插件包根目录'
     } else {
-        foreach ($required in @('AudioPlayer.exe','AudioPlayer.dll','AudioPlayer.Plugin.Abstractions.dll','Serilog.dll','Serilog.Sinks.File.dll','python/python.exe','python/Lib/site-packages/opencc/opencc.py','recognition/transcribe.py','recognition/model_manager.py','README.md','portable.flag')) {
+        $requiredFiles = @('AudioPlayer.exe','AudioPlayer.dll','AudioPlayer.Plugin.Abstractions.dll','Serilog.dll','Serilog.Sinks.File.dll','AudioPlayer.runtimeconfig.json','recognition/transcribe.py','recognition/translate_lyrics.py','recognition/model_manager.py','README.md','portable.flag')
+        # Older manifests predate the switch and always included Python.
+        if ($manifest.bundledPython -ne $false) {
+            $requiredFiles += @('python/python.exe','python/Lib/site-packages/opencc/opencc.py')
+        } else {
+            if (Test-Path -LiteralPath (Join-Path $Directory 'python')) { throw '不带 Python 的包残留 python 目录。' }
+            $requiredFiles += 'recognition/requirements-lock.txt'
+        }
+        if ($manifest.selfContainedDotNet -isnot [bool]) { throw '构建清单缺少 .NET 运行环境选择。' }
+        if ($manifest.selfContainedDotNet) { $requiredFiles += @('coreclr.dll','hostfxr.dll','PresentationFramework.dll') }
+        elseif ((Test-Path -LiteralPath (Join-Path $Directory 'coreclr.dll')) -or (Test-Path -LiteralPath (Join-Path $Directory 'hostfxr.dll'))) { throw '不带 .NET 的包残留 .NET 运行时。' }
+        foreach ($required in $requiredFiles) {
             if (!(Test-Path -LiteralPath (Join-Path $Directory $required))) { throw "主程序包缺少 $required" }
         }
+        $runtime = (Get-Content -LiteralPath (Join-Path $Directory 'AudioPlayer.runtimeconfig.json') -Raw | ConvertFrom-Json).runtimeOptions
+        $frameworks = if ($manifest.selfContainedDotNet) { @($runtime.includedFrameworks) } else { @($runtime.frameworks) }
+        if ($frameworks.name -notcontains 'Microsoft.WindowsDesktop.App') { throw '.NET 发布方式与构建清单不符。' }
     }
     return $manifest
 }

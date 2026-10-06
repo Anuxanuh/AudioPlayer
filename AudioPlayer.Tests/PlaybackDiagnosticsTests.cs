@@ -34,7 +34,7 @@ internal static partial class Program
         try
         {
             var clock = new DiagnosticClock();
-            using var audio = new AudioService(clock) { Volume = 0 };
+            using var audio = new AudioService(clock, automaticRecovery: false) { Volume = 0 };
             string? error = null;
             audio.Failed += message => error = message;
             audio.Open(path); Pump(() => audio.IsReady || error is not null);
@@ -58,7 +58,7 @@ internal static partial class Program
             Assert(audio.IsPlaying, "Observations must not change playback intent");
             var state = (StructureValue)stalled[^1].Properties["PlaybackState"];
             Assert(state.Properties.Any(p => p.Name == "RequestedPlaying" && p.Value is ScalarValue { Value: true }) &&
-                state.Properties.Any(p => p.Name == "Buffering") && state.Properties.Any(p => p.Name == "NativeRate") &&
+                state.Properties.Any(p => p.Name == "Buffering") && state.Properties.Any(p => p.Name == "PlayerRate") &&
                 state.Properties.Any(p => p.Name == "PositionSeconds") && state.Properties.Any(p => p.Name == "PrivateMemoryMB"), "Stall snapshots must contain actionable state");
             for (int i = 0; i < 29; i++) { clock.Advance(1); audio.ObservePlayback(); }
             Assert(capture.Named("progress-stalled").Length == baseline + 1, "Persistent stalls must not spam the log");

@@ -8,7 +8,7 @@ public sealed class OnlineModelService
 {
     public async Task RunAsync(string python, string modelRoot, string? downloadId, Action<JsonElement> onEvent, CancellationToken token, bool translation = false)
     {
-        var start = new ProcessStartInfo(python)
+        var start = new ProcessStartInfo(PythonEnvironment.RequireExecutable(python))
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8

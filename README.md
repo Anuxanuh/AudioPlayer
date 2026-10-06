@@ -4,7 +4,7 @@
 
 > 程序的名字是AI自己决定的(叫声屿的音乐软件属实有点太多了), 本人开发该项目仅是和朋友自用;
 
-便携发行包包含 .NET 桌面运行时、独立 Python、识别与翻译依赖，无须在使用电脑上预装这些环境。语音识别和歌词翻译在本地完成；模型下载和 Bilibili 插件的在线功能需要联网。
+默认便携发行包包含 .NET 桌面运行时、独立 Python、识别与翻译依赖，无须在使用电脑上预装这些环境。也可构建不带 .NET 或 Python 的精简包，使用目标电脑的环境。语音识别和歌词翻译在本地完成；模型下载和 Bilibili 插件的在线功能需要联网。
 
 ## 功能
 
@@ -101,7 +101,7 @@ CPU 识别不需要 CUDA。GPU 识别需要兼容的 NVIDIA 驱动、CUDA 12／c
 
 ## 编译与打包
 
-从仓库根目录运行 `build.cmd` 或 PowerShell 7 的 `./build.ps1`。主程序构建需要 Windows x64、PowerShell 7、.NET 10 SDK，以及 Visual Studio／Build Tools 提供的 x64 Visual C++ 可再发行 CRT。
+从仓库根目录运行 `build.cmd` 或 PowerShell 7 的 `./build.ps1`。主程序构建需要 Windows x64、PowerShell 7、.NET 10 SDK；附带 Python 时还需要 Visual Studio／Build Tools 提供的 x64 Visual C++ 可再发行 CRT。
 
 ```powershell
 # 主程序 + 全部插件，不带模型；生成 ZIP 与 SHA-256
@@ -112,6 +112,15 @@ CPU 识别不需要 CUDA。GPU 识别需要兼容的 NVIDIA 驱动、CUDA 12／c
 
 # 主程序不带插件或模型
 ./build.cmd -Plugins none -Models none
+
+# 不带 .NET，使用目标电脑的 .NET 10 Desktop Runtime x64
+./build.cmd -NoDotNetRuntime
+
+# 不带 Python，使用目标电脑的 Python 及识别／翻译依赖
+./build.cmd -NoPythonRuntime
+
+# 同时不带两套环境；仍可选择插件和模型
+./build.cmd -NoDotNetRuntime -NoPythonRuntime -Plugins all -Models none
 
 # 单独编译并打包插件
 ./build.cmd -Plugin novel
@@ -130,6 +139,8 @@ CPU 识别不需要 CUDA。GPU 识别需要兼容的 NVIDIA 驱动、CUDA 12／c
 | `-Plugins` | 主程序包含的插件 ID；支持逗号列表、`all`、`none` | `all` |
 | `-Models` | 包含的本地模型 ID；支持逗号列表、`all`、`none` | `none` |
 | `-Plugin` | 只构建一个独立插件，不能同时指定 `-Plugins` 或 `-Models` | 未指定 |
+| `-NoDotNetRuntime` / `-NoDotNet` | 主程序不附带 .NET，使用本机 .NET 10 Desktop Runtime x64 | 关闭，默认附带 |
+| `-NoPythonRuntime` / `-NoPython` | 主程序不附带 Python 及识别／翻译依赖，使用本机环境 | 关闭，默认附带 |
 | `-OutputDirectory` | ZIP 和构建结果记录目录；相对路径以仓库根目录为准 | `artifacts` |
 | `-BootstrapPython` | 准备依赖时使用的开发 Python 路径，需带 pip | 自动查找 |
 | `-VcCrtDirectory` | x64 Visual C++ CRT 目录 | 自动查找 |
@@ -137,15 +148,30 @@ CPU 识别不需要 CUDA。GPU 识别需要兼容的 NVIDIA 驱动、CUDA 12／c
 
 直接调用 `build.ps1` 时，`-Plugins` 和 `-Models` 也接受 PowerShell 数组。双击 `build.cmd` 后窗口会暂停显示结果；带参数调用不暂停。
 
-Python 或所选插件的运行依赖缺失时，脚本会准备下载；已有完整的 `runtime` 会复用。仅构建小说插件不需要 Python、FFmpeg、CRT 或语音模型；Bilibili 独立包附带其 Python 库和 FFmpeg，运行时使用播放器提供的 Python。
+需要附带的 Python 或所选插件的运行依赖缺失时，脚本会准备下载；已有完整的 `runtime` 会复用。`-NoPythonRuntime` 跳过独立 Python 的准备、复制和 CRT 查找。选择 Bilibili 时，准备和检查插件库仍需要构建机上的 Python，必要时可指定 `-BootstrapPython`；插件的 yt-dlp、二维码库和 FFmpeg 仍会打包。仅构建小说插件不需要 Python、FFmpeg、CRT 或语音模型。
+
+两个运行环境开关可独立或组合使用，也适用于 `-Mode Build`；独立插件包始终使用宿主环境，不能与这两个开关组合。不带 .NET 的程序使用本机已安装的 **.NET 10 Desktop Runtime x64**，不额外检测或安装 .NET。
 
 `-Models` 只校验并复制 `models/faster-whisper-ID` 中的完整模型，不自动下载。指定缺失或损坏的模型会导致构建失败。`-Models all` 包含目录中的全部多语言模型，需为模型、发布副本和 ZIP 预留磁盘空间。
 
-构建工作目录为 `artifacts/build-日期时间-随机后缀/`，不会覆盖已有运行目录。主程序 ZIP 内为 `ShengYu/`，独立插件 ZIP 内为 `plugins/插件ID/` 和包清单。`package-manifest.json` 记录实际包含的插件与模型；发布包排除用户配置、音频、日志、登录凭据和下载缓存。
+构建工作目录为 `artifacts/build-日期时间-随机后缀/`，不会覆盖已有运行目录。主程序 ZIP 内为 `ShengYu/`，独立插件 ZIP 内为 `plugins/插件ID/` 和包清单。`package-manifest.json` 记录插件、模型、`selfContainedDotNet` 和 `bundledPython`；省略环境时 ZIP 名带 `NoDotNet` / `NoPython`。发布包排除用户配置、音频、日志、登录凭据和下载缓存。
 
 成功后，输出目录中的 `latest-build.json` 或 `latest-插件ID-plugin.json` 记录发布目录、ZIP 和日志位置。`Build` 模式不生成 ZIP。日志保存在 `artifacts/build-logs/`，失败返回非零退出码。
 
 开发环境、模型下载、测试命令和代码结构见[贡献指南](CONTRIBUTING.md)。
+
+### 使用本机 Python
+
+不带 Python 的包启动时会查找 PATH 和 Windows 注册表中的 Python 安装，跳过 Windows Store 的未安装占位符；设置里已有的有效 Python 路径优先。未找到时会提示用户自行准备，不自动安装。普通播放、已有歌词和小说插件无需 Python；识别、翻译、模型管理和 Bilibili 下载使用设置里选定的 Python。
+
+建议自行准备 [Python 3.13 x64](https://www.python.org/downloads/windows/)，也可使用自己的虚拟环境。在解压目录打开 PowerShell，用目标环境安装依赖：
+
+```powershell
+# 将路径换成自己的 Python；安装命令需要可用的 pip 和网络／本地 wheel 源
+& 'C:/Python313/python.exe' -m pip install -r './recognition/requirements-lock.txt'
+```
+
+在“设置 → 离线识别引擎”浏览并选择该 `python.exe`，再点击“检测本机环境”。独立 Python 包含所需依赖；本机环境需自行维护，缺少 DLL 时按检测结果准备 Visual C++ 或 GPU 运行库。移动精简包到另一台电脑后，也需准备那台电脑的运行环境。
 
 ## 数据与日志
 
@@ -165,7 +191,9 @@ Python 或所选插件的运行依赖缺失时，脚本会准备下载；已有�
 
 播放诊断默认开启。日志通过 `request`（插件请求）、`media`（播放器实例）和 `command`（播放操作）关联文件大小、打开耗时、跳转落点、倍速、缓冲状态与内存用量。`requestedPlaying=true` 表示已请求播放；`progress-observed` 才表示观测到播放位置前进，不能据此判断设备是否实际输出声音。
 
-请求播放后连续 5 秒未观测到进度会记录 `progress-stalled`，持续停滞每 30 秒补记一次，恢复前进时记录 `progress-resumed`。打开文件超过 5 秒会记录 `opening-pending`；界面线程采样间隔超过 5 秒会记录 `observation-delayed`，用于区分调度延迟。诊断仅记录状态，不会自动跳转或重启播放；正常播放不逐秒写日志。
+请求播放后连续 5 秒未观测到进度会记录 `progress-stalled`，恢复前进时记录 `progress-resumed`。打开文件超过 5 秒会记录 `opening-pending`；界面线程采样间隔超过 5 秒会记录 `observation-delayed`，用于区分调度延迟。正常播放不逐秒写日志。`PlayerRate` 是 WPF 播放器的倍率属性，实际是否播放以位置变化为准。
+
+章节切换会在打开音频后先定位、再播放。非缓冲状态持续 8 秒无进度时，播放器会重新打开当前音频并恢复原位置、音量和倍速；缓冲中会等待最多 60 秒。连续恢复最多尝试两次，失败后显示原因，避免无限重试；稳定播放 30 秒后重新允许恢复。暂停、切歌和退出会优先于恢复操作，恢复过程写入日志。
 
 反馈切换音频后停播的问题时，请保留从程序启动到问题发生后的日志，注明复现时间、音频大小和时长、所在磁盘，以及暂停／继续或重新打开音频能否恢复。发生后可保持播放状态至少 10 秒再操作，以便记录停滞信息；持续一分钟可获得后续状态。若操作跨整点，请一并提供相邻小时日志。
 

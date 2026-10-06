@@ -25,6 +25,7 @@
     <Content Include="..\recognition\inspect_environment.py" Link="recognition\inspect_environment.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\recognition\model_catalog.json" Link="recognition\model_catalog.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\recognition\model_manager.py" Link="recognition\model_manager.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\recognition\requirements-lock.txt" Link="recognition\requirements-lock.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

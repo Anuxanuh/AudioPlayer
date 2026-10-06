@@ -23,7 +23,7 @@ public sealed class LyricTranslationService
         string output = LyricTranslation.OutputPath(audio, options.TargetLanguage);
         if (File.Exists(output) && !overwrite) throw new IOException("译文已经存在；勾选覆盖后可重新翻译。");
         string temporary = output + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        var start = new ProcessStartInfo(options.Python)
+        var start = new ProcessStartInfo(PythonEnvironment.RequireExecutable(options.Python))
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardInputEncoding = new UTF8Encoding(false), StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8

@@ -30,7 +30,8 @@ public partial class MainWindow
             try
             {
                 window._view.SelectedPlaylist = playlist;
-                if (window._current?.Id != track.Id || !window._audio.IsReady)
+                bool opening = window._current?.Id != track.Id || !window._audio.IsReady;
+                if (opening)
                 {
                     var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                     void Ready() { if (window._current?.Id == track.Id) opened.TrySetResult(); else opened.TrySetException(new InvalidOperationException("当前音频已改变。")); }
@@ -38,7 +39,7 @@ public partial class MainWindow
                     window._audio.Opened += Ready; window._audio.Failed += Failed;
                     try
                     {
-                        window._queue.Reset(); window.PlayTrack(track);
+                        window._queue.Reset(); window.PlayTrackAt(track, seconds);
                         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, window._lifetime.Token);
                         await opened.Task.WaitAsync(TimeSpan.FromSeconds(20), linked.Token);
                     }
@@ -46,8 +47,11 @@ public partial class MainWindow
                 }
                 if (request != _request || window._current?.Id != track.Id || window._exiting) throw new OperationCanceledException("播放请求已被替换。");
                 cancellationToken.ThrowIfCancellationRequested();
-                window._audio.Seek(seconds, $"plugin-request:{request}");
-                if (!window._audio.IsPlaying) window._audio.Toggle($"plugin-request:{request}");
+                if (!opening)
+                {
+                    window._audio.Seek(seconds, $"plugin-request:{request}");
+                    if (!window._audio.IsPlaying) window._audio.Toggle($"plugin-request:{request}");
+                }
                 window.UpdatePlaybackUi(); window.UpdateLyrics();
                 Log.Information("Plugin playback jump commands issued; request={RequestId}; media={MediaId}; playlist={Playlist}; track={Track}; seconds={Seconds}; elapsedMs={ElapsedMs}; progressConfirmed=false",
                     request, window._audio.MediaId, playlistId, trackId, seconds, elapsed.Elapsed.TotalMilliseconds);

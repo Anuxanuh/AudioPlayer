@@ -79,7 +79,7 @@ public partial class MainWindow : Window
             SeekSlider.IsEnabled = _audio.Duration > TimeSpan.Zero;
             _updatingSeek = false;
             _view.DurationText = FormatTime(_audio.Duration);
-            _view.Status = "正在播放 · " + _current?.Title;
+            _view.Status = (_audio.IsPlaying ? "正在播放 · " : "已暂停 · ") + _current?.Title;
             UpdatePlaybackUi();
             EnsureLiveRecognition();
         };
@@ -94,7 +94,7 @@ public partial class MainWindow : Window
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveState(); };
         _view.Settings.PropertyChanged += Settings_PropertyChanged;
         _ready = true;
-        _plugins.Start(Path.Combine(AppContext.BaseDirectory, "plugins"), _store.DirectoryPath, _view.Settings.EnabledPlugins, () => _view.Settings.PythonPath, ScheduleSave, new PluginPlaybackHost(this));
+        _plugins.Start(Path.Combine(AppContext.BaseDirectory, "plugins"), _store.DirectoryPath, _view.Settings.EnabledPlugins, () => PythonEnvironment.RequireExecutable(_view.Settings.PythonPath), ScheduleSave, new PluginPlaybackHost(this));
         PluginSettingsList.ItemsSource = _plugins.Entries;
         PluginSummary.Text = _plugins.Entries.Count == 0 ? "未发现插件。将插件文件夹放入程序目录的 plugins 后重启。" : $"已发现 {_plugins.Entries.Count} 个插件，默认关闭。更改开关后重启播放器生效。";
         if (_plugins.Errors.Count > 0) PluginSummary.Text += "\n" + string.Join("\n", _plugins.Errors);
@@ -108,6 +108,15 @@ public partial class MainWindow : Window
         ApplySettings();
         _clock.Start();
         if (store.LoadWarning is not null) _view.Status = store.LoadWarning;
+    }
+
+    internal void NotifyPythonEnvironment()
+    {
+        string? python = PythonEnvironment.ResolveExecutable(_view.Settings.PythonPath);
+        Log.Information("Python environment selected; available={Available}; executable={Python}", python is not null, python ?? _view.Settings.PythonPath);
+        if (python is not null) return;
+        _view.Status = "未找到 Python；请在设置中配置本机环境。普通播放仍可使用。";
+        MessageBox.Show(this, PythonEnvironment.SetupMessage, "声屿 · Python 环境", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -369,7 +378,9 @@ public partial class MainWindow : Window
         else if (e.Key == Key.Delete) { RemoveTrack_Click(sender, e); e.Handled = true; }
     }
 
-    private void PlayTrack(Track track)
+    private void PlayTrack(Track track) => PlayTrackAt(track, 0);
+
+    private void PlayTrackAt(Track track, double seconds)
     {
         Log.Information("Track playback requested; track={Track}; previousTrack={PreviousTrack}; previousMedia={PreviousMediaId}; audio={Audio}", track.Id, _current?.Id, _audio.MediaId, track.FilePath);
         CancelLiveRecognition(); _liveAttemptedPath = null; _streamingLines.Clear(); _view.LiveRecognitionStatus = "";
@@ -384,7 +395,7 @@ public partial class MainWindow : Window
         _view.PositionText = "00:00"; _view.DurationText = "00:00";
         _updatingSeek = true; SeekSlider.Value = 0; SeekSlider.IsEnabled = false; _updatingSeek = false;
         LoadLyrics(track);
-        try { _audio.Open(track.FilePath); }
+        try { _audio.Open(track.FilePath, seconds); }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException or NotSupportedException)
         { Log.Error(ex, "Opening audio failed; path={Path}", track.FilePath); _audio.Stop(); _view.Status = "打开音频失败：" + ex.Message; }
         UpdatePlaybackUi();
@@ -406,7 +417,7 @@ public partial class MainWindow : Window
 
     private void Play_Click(object? sender, RoutedEventArgs? e)
     {
-        if (_current is not null && _audio.IsReady) _audio.Toggle();
+        if (_current is not null && _audio.HasSource) _audio.Toggle();
         else
         {
             var track = _view.SelectedTrack ?? _queue.Next(_view.SelectedPlaylist.Tracks.ToArray(), null, _view.Settings.Mode, false, false, _view.Settings.RepeatPlaylist);

@@ -13,6 +13,10 @@ Build 只发布到独立目录，不创建 ZIP。单独插件使用 -Plugin，�
 仅编译／打包此插件，不能同时使用 Plugins 或 Models。
 .PARAMETER Mode
 Build：编译并准备可分发目录；Package：在 Build 基础上创建 ZIP、SHA-256 并验证。
+.PARAMETER NoDotNetRuntime
+不附带 .NET 运行时，使用目标电脑的 .NET 10 Desktop Runtime x64。
+.PARAMETER NoPythonRuntime
+不附带 Python 及其识别／翻译依赖，使用目标电脑的 Python 环境。
 .PARAMETER OutputDirectory
 ZIP 与最新成功记录的目录，默认 artifacts；构建工作目录和日志始终位于 artifacts。
 #>
@@ -21,6 +25,7 @@ param(
     [ValidateSet('Build','Package')][string]$Mode = 'Package',
     [string[]]$Plugins = @('all'), [string[]]$Models = @('none'), [string]$Plugin = '',
     [string]$OutputDirectory = '', [string]$BootstrapPython = '', [string]$VcCrtDirectory = '',
+    [Alias('NoDotNet')][switch]$NoDotNetRuntime, [Alias('NoPython')][switch]$NoPythonRuntime,
     [switch]$Help, [switch]$ListOptions,
     [Alias('no-pause','-no-pause')][switch]$NoPause
 )
@@ -73,12 +78,16 @@ try {
   build.cmd -Mode Package -Plugins all -Models none
   build.cmd -Mode Package -Plugins bilibili,novel -Models tiny,base
   build.cmd -Mode Build -Plugins none -Models tiny
+  build.cmd -Mode Package -NoDotNetRuntime -NoPythonRuntime
   build.cmd -Mode Package -Plugin novel
   build.cmd -Mode Build -Plugin bilibili
 
 -Mode Build 只生成发布目录；Package 编译后创建 ZIP 并验证（默认）。
 -Plugins / -Models 支持 all、none 或逗号列表；默认全部插件、不带模型。
 -Plugin 只构建一个插件，不允许再指定 -Plugins / -Models。
+-NoDotNetRuntime（别名 -NoDotNet）不附带 .NET，使用本机 .NET 10 Desktop Runtime x64。
+-NoPythonRuntime（别名 -NoPython）不附带 Python 和识别／翻译依赖，使用本机 Python。
+两个运行环境开关可独立使用；默认均附带；仅适用于主程序包。
 -OutputDirectory 指定 ZIP / 最新成功记录目录（默认 artifacts）。
 -BootstrapPython / -VcCrtDirectory 可指定依赖准备工具路径。
 -ListOptions 列出可选项；-Help 显示帮助。带参数调用 build.cmd 不暂停；双击结束后暂停。
@@ -91,6 +100,7 @@ try {
     }
     if ($PSBoundParameters.ContainsKey('Plugin')) {
         if ($PSBoundParameters.ContainsKey('Plugins') -or $PSBoundParameters.ContainsKey('Models')) { throw '-Plugin 为独立插件模式，不能与 -Plugins / -Models 同时使用。' }
+        if ($NoDotNetRuntime -or $NoPythonRuntime) { throw '-Plugin 为独立插件模式，不能与运行环境开关同时使用；插件始终使用宿主环境。' }
         $Plugin = $Plugin.Trim().ToLowerInvariant()
         if ($pluginCatalog.Id -notcontains $Plugin) { throw "未知独立插件：$Plugin。可选：$($pluginCatalog.Id -join ', ')" }
         $kind = 'plugin'; $selectedPlugins = @($Plugin); $selectedModels = @()
@@ -107,6 +117,8 @@ try {
     $work = Join-Path $repo ('artifacts/build-' + $buildId)
     $package = Join-Path $work $(if ($kind -eq 'app') { 'ShengYu' } else { 'Plugin' })
     $flavor = if ($selectedModels.Count) { 'WithModels' } else { 'NoModels' }
+    if ($NoDotNetRuntime) { $flavor += '-NoDotNet' }
+    if ($NoPythonRuntime) { $flavor += '-NoPython' }
     $zipName = if ($kind -eq 'plugin') { "ShengYu-$Plugin-Plugin-$buildId.zip" } else { "ShengYu-win-x64-$flavor-$buildId.zip" }
     $zip = Join-Path $OutputDirectory $zipName
     $log = Join-Path $repo ('artifacts/build-logs/' + $buildId + '.log')
@@ -119,7 +131,7 @@ try {
         $sdk = & dotnet --version
         if ($LASTEXITCODE -ne 0 -or $sdk -notmatch '^10\.') { throw "本项目需要 .NET 10 SDK，当前：$sdk" }
         $python = Join-Path $repo 'runtime/python/python.exe'
-        if ($kind -eq 'app') {
+        if ($kind -eq 'app' -and !$NoPythonRuntime) {
             $pythonProbe = @'
 import sys, struct
 from pathlib import Path
@@ -159,7 +171,7 @@ print('Python pinned dependencies and OpenCC OK')
         $modelArgument = if ($selectedModels.Count) { $selectedModels -join ',' } else { 'none' }
         if ($kind -eq 'app') {
             if ($VcCrtDirectory) { $VcCrtDirectory = [IO.Path]::GetFullPath($VcCrtDirectory, $repo) }
-            & (Join-Path $repo 'packaging/build-portable.ps1') -OutputDirectory $package -VcCrtDirectory $VcCrtDirectory -Plugins $pluginArgument -Models $modelArgument
+            & (Join-Path $repo 'packaging/build-portable.ps1') -OutputDirectory $package -VcCrtDirectory $VcCrtDirectory -Plugins $pluginArgument -Models $modelArgument -NoDotNetRuntime:$NoDotNetRuntime -NoPythonRuntime:$NoPythonRuntime
         } else {
             & (Join-Path $repo 'packaging/build-plugins.ps1') -OutputDirectory $package -Plugins $Plugin
             [ordered]@{ kind = 'plugin'; createdUtc = [DateTime]::UtcNow.ToString('o'); architecture = 'win-x64'; plugins = @($Plugin); models = @(); requiredHostApi = ($pluginCatalog | Where-Object Id -eq $Plugin).Manifest.apiVersion } |
@@ -175,6 +187,7 @@ print('Python pinned dependencies and OpenCC OK')
             & (Join-Path $repo 'packaging/test-delivery.ps1') -ZipPath $zip -PythonPath $python
         }
         $record = [ordered]@{ kind = $kind; mode = $Mode; plugins = @($selectedPlugins); models = @($selectedModels); packageDirectory = $package; zip = $details.Zip; sha256 = $details.SHA256; sizeMiB = $details.MiB; verification = $(if ($Mode -eq 'Package') { 'extracted-package' } else { 'published-layout' }); createdUtc = [DateTime]::UtcNow.ToString('o'); buildLog = $log }
+        if ($kind -eq 'app') { $record.selfContainedDotNet = !$NoDotNetRuntime; $record.bundledPython = !$NoPythonRuntime }
         $recordName = if ($kind -eq 'plugin') { "latest-$Plugin-plugin.json" } else { 'latest-build.json' }
         $temporaryRecord = Join-Path $work $recordName
         $record | ConvertTo-Json | Set-Content -LiteralPath $temporaryRecord -Encoding utf8

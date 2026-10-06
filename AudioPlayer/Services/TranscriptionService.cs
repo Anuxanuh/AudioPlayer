@@ -22,7 +22,7 @@ public sealed class TranscriptionService
         string? temporary = output is null ? null : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(output))!, "." + Guid.NewGuid().ToString("N") + ".lrc.tmp");
         var start = new ProcessStartInfo
         {
-            FileName = settings.PythonPath.Trim(), UseShellExecute = false, CreateNoWindow = true,
+            FileName = PythonEnvironment.RequireExecutable(settings.PythonPath), UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
         };

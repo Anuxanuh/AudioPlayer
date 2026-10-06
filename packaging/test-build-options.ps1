@@ -42,6 +42,8 @@ Must-Fail { Resolve-BuildSelection @('tiny.en') $models '模型' } '未知模型
 foreach ($case in @(
     @{ Args = @('-Plugin','novel','-Plugins','none'); Pattern = '不能与' },
     @{ Args = @('-Plugin','novel','-Models','tiny'); Pattern = '不能与' },
+    @{ Args = @('-Plugin','novel','-NoDotNetRuntime'); Pattern = '不能与运行环境' },
+    @{ Args = @('-Plugin','novel','-NoPythonRuntime'); Pattern = '不能与运行环境' },
     @{ Args = @('-Plugin','all'); Pattern = '未知独立插件' },
     @{ Args = @('-Plugins','bad'); Pattern = '未知插件' },
     @{ Args = @('-Models','bad'); Pattern = '未知模型' },
@@ -52,6 +54,36 @@ foreach ($case in @(
 }
 $result = Invoke-Root @('-Help','--no-pause')
 Check ($result.Code -eq 0 -and $result.Text -match 'large-v3-turbo' -and $result.Text -match 'novel') 'Help works from another working directory and keeps legacy --no-pause'
+$result = Invoke-Root @('-Help','-NoDotNet','-NoPython')
+Check ($result.Code -eq 0 -and $result.Text -match 'NoDotNetRuntime' -and $result.Text -match 'NoPythonRuntime') 'Runtime switches and their aliases bind and appear in help'
+
+foreach ($dotnet in @($false,$true)) {
+    foreach ($python in @($false,$true)) {
+        $app = Join-Path $root "runtime-$dotnet-$python"
+        $required = @('AudioPlayer.exe','AudioPlayer.dll','AudioPlayer.Plugin.Abstractions.dll','Serilog.dll','Serilog.Sinks.File.dll','recognition/transcribe.py','recognition/translate_lyrics.py','recognition/model_manager.py','recognition/requirements-lock.txt','README.md','portable.flag')
+        if ($python) { $required += @('python/python.exe','python/Lib/site-packages/opencc/opencc.py') }
+        if ($dotnet) { $required += @('coreclr.dll','hostfxr.dll','PresentationFramework.dll') }
+        foreach ($file in $required) {
+            $path = Join-Path $app $file; New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+            [IO.File]::WriteAllText($path, 'fixture')
+        }
+        $runtime = @{}; $property = if ($dotnet) { 'includedFrameworks' } else { 'frameworks' }
+        $runtime[$property] = @(@{ name = 'Microsoft.WindowsDesktop.App'; version = '10.0.0' })
+        @{ runtimeOptions = $runtime } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $app 'AudioPlayer.runtimeconfig.json')
+        @{ kind = 'app'; plugins = @(); models = @(); selfContainedDotNet = $dotnet; bundledPython = $python } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $app 'package-manifest.json')
+        $null = Assert-PackageLayout $app $repo
+        Check $true "App runtime layout: .NET=$dotnet Python=$python"
+        if (!$dotnet) {
+            [IO.File]::WriteAllText((Join-Path $app 'coreclr.dll'), 'leftover')
+            Must-Fail { Assert-PackageLayout $app $repo } '残留 .NET'
+            Remove-Item -LiteralPath (Join-Path $app 'coreclr.dll')
+        }
+        if (!$python) {
+            New-Item -ItemType Directory -Path (Join-Path $app 'python') | Out-Null
+            Must-Fail { Assert-PackageLayout $app $repo } '残留 python'
+        }
+    }
+}
 
 $model = Join-Path $root 'model-fixture'; New-Item -ItemType Directory -Path $model | Out-Null
 $files = @()

@@ -80,7 +80,7 @@ dotnet run --project AudioPlayer.Tests -c Release -- --novel --plugins --exit
 dotnet run --project AudioPlayer.Tests -c Release -- --render --media --novel-ui --novel-host
 
 # 播放诊断：底层停滞、恢复、暂停排除、告警限频和实例切换
-dotnet run --project AudioPlayer.Tests -c Release -- --playback-diagnostics --novel-host
+dotnet run --project AudioPlayer.Tests -c Release -- --playback-diagnostics --playback-recovery --novel-host
 
 # Bilibili 插件的编码和列表交互
 dotnet run --project AudioPlayer.Tests -c Release -- --bili-encoding --bili-selection
@@ -109,7 +109,7 @@ dotnet run --project AudioPlayer.Tests -c Release -- --translation --translation
 
 ### 发行包自检
 
-`-Mode Package` 自动解压生成的 ZIP，在中文路径下检查包清单和依赖；主程序包还会隔离开发机 .NET／Python 路径执行自检。也可手动重验：
+`-Mode Package` 自动解压生成的 ZIP，在中文路径下检查包清单和依赖。附带的运行环境会隔离开发机路径执行自检；省略 .NET 时使用本机桌面运行时，省略 Python 时检查外部 Python 和缺少 Python 的提示分支。不带 Python 的包允许识别依赖尚未准备，报告中的 `CpuReady` 独立反映识别能力。也可手动重验：
 
 ```powershell
 ./packaging/test-delivery.ps1 -ZipPath 'artifacts/your-package.zip'

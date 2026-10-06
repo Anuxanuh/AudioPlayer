@@ -194,9 +194,19 @@ internal static partial class Program
             var host = new MainWindow.PluginPlaybackHost(window); var snapshot = host.GetSnapshot(); Assert(snapshot.Tracks.Select(t => t.Id).SequenceEqual(fixture.Snapshot.Tracks.Select(t => t.Id)), "Host exposes immutable ordered playlist");
             var play = window.Dispatcher.InvokeAsync(() => host.PlayAsync(playlist.Id, playlist.Tracks[1].Id, 1.2, CancellationToken.None)).Task.Unwrap(); Pump(() => play.IsCompleted); play.GetAwaiter().GetResult();
             Assert(host.GetSnapshot().CurrentTrackId == playlist.Tracks[1].Id && host.GetSnapshot().IsPlaying && host.GetSnapshot().PositionSeconds >= 1.1, "Host switch and seek must await MediaOpened");
+            double position = host.GetSnapshot().PositionSeconds; Delay(250);
+            Assert(host.GetSnapshot().PositionSeconds > position + 0.1, "Chapter playback must actually advance after the initial seek");
             Private<AudioService>(window, "_audio").Toggle();
             play = window.Dispatcher.InvokeAsync(() => host.PlayAsync(playlist.Id, playlist.Tracks[1].Id, 0.4, CancellationToken.None)).Task.Unwrap(); Pump(() => play.IsCompleted); play.GetAwaiter().GetResult();
             Assert(host.GetSnapshot().IsPlaying && host.GetSnapshot().PositionSeconds < 1, "Same-track chapter jump resumes paused playback");
+            play = window.Dispatcher.InvokeAsync(() =>
+            {
+                var pending = host.PlayAsync(playlist.Id, playlist.Tracks[0].Id, 1.2, CancellationToken.None);
+                Private<AudioService>(window, "_audio").Toggle("pause-before-chapter-opened");
+                return pending;
+            }).Task.Unwrap();
+            Pump(() => play.IsCompleted); play.GetAwaiter().GetResult();
+            Assert(!host.GetSnapshot().IsPlaying && host.GetSnapshot().PositionSeconds >= 1.1, "A user pause during chapter opening must override the original play request");
             var missing = host.PlayAsync(playlist.Id, Guid.NewGuid(), 0, CancellationToken.None);
             try { missing.GetAwaiter().GetResult(); throw new Exception("Expected missing track rejection"); } catch (InvalidOperationException) { }
         }

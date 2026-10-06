@@ -3,7 +3,9 @@
 本包所含插件：{{PLUGINS}}。
 本包所含语音识别模型：{{MODELS}}。
 此压缩包不附带播放列表、用户设置、音频、歌词、日志或下载缓存；具体构建选择见 `package-manifest.json`。
-已附带 .NET 桌面运行时、独立 Python、faster-whisper、CTranslate2、SentencePiece、py3langid 语言识别库和 OpenCC 本地繁简字典，无须预装 .NET 或 Python。语音及翻译权重按包清单提供，翻译权重不包含在默认压缩包中。
+{{DOTNET}}
+{{PYTHON}}
+语音及翻译权重按包清单提供，翻译权重不包含在默认压缩包中。
 如本包包含 Bilibili 插件，其 yt-dlp、二维码库和 FFmpeg 也已附带，不需要浏览器运行时。所有插件默认关闭。
 
 ## 开始使用
@@ -12,6 +14,18 @@
 2. 添加音频即可播放；单击底部封面展开歌词界面。点击任意歌词行跳转到该句，暂停时保持暂停。
 3. 使用识别功能前，在“设置 → 离线识别引擎”选择本包附带的模型。无模型的包可通过“在线模型与下载”下载多语言模型，或选择本地已有的完整 faster-whisper / CTranslate2 模型目录。下载完成后自动更新模型选择框。
 4. 点击“检测本机环境”和“检查选中模型”检查依赖。模型下载完成后，音频识别完全在本机运行，不调用云端识别 API。
+
+## 本机 Python 环境
+
+不带 Python 的包会查找 PATH 和 Windows 注册表中的 Python 安装，优先使用设置里已有的有效路径。未找到时提示自行准备，不自动安装。普通播放和已有歌词无需 Python；识别、翻译、模型管理和 Bilibili 下载需要它。
+
+建议安装 [Python 3.13 x64](https://www.python.org/downloads/windows/) 或准备自己的虚拟环境。在解压目录打开 PowerShell，将下面的路径替换为自己的 Python，安装识别和翻译依赖：
+
+```powershell
+& 'C:/Python313/python.exe' -m pip install -r './recognition/requirements-lock.txt'
+```
+
+在“设置 → 离线识别引擎”选择该 `python.exe`，点击“检测本机环境”。请自行维护本机依赖和所需 Visual C++ / GPU 运行库。完整 Python 包无需以上安装步骤。不带 .NET 的包使用本机 .NET 10 Desktop Runtime x64。
 
 ## 离线歌词翻译
 

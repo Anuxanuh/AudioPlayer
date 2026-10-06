@@ -16,9 +16,11 @@ public sealed class EnvironmentInspectionService
     public async Task<EnvironmentReport> InspectAsync(string pythonPath, CancellationToken token)
     {
         Log.Information("Inspecting local recognition environment; python={Python}", pythonPath);
+        string? executable = PythonEnvironment.ResolveExecutable(pythonPath);
+        if (executable is null) return Error(PythonEnvironment.SetupMessage);
         var start = new ProcessStartInfo
         {
-            FileName = pythonPath, UseShellExecute = false, CreateNoWindow = true,
+            FileName = executable, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
         };
@@ -52,5 +54,5 @@ public sealed class EnvironmentInspectionService
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or JsonException or IOException)
         { Log.Error(ex, "Environment inspection failed"); return Error("环境检测失败：" + ex.Message); }
     }
-    private static EnvironmentReport Error(string message) => new(new[] { new EnvironmentCheck("Python / 检测程序", "error", message) }, false, false, "请检查配置的 Python 路径，或重新解压完整便携包。");
+    private static EnvironmentReport Error(string message) => new(new[] { new EnvironmentCheck("Python / 检测程序", "error", message) }, false, false, "请在设置中选择本机或随包提供的 Python，并按照 README.md 准备依赖。");
 }

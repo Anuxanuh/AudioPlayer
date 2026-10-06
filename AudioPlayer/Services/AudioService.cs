@@ -8,10 +8,14 @@ public sealed partial class AudioService : IDisposable
     private double _volume = 0.65;
     private double _playbackRate = 1;
     private bool _ended;
+    private string? _sourcePath;
+    private double _pendingPosition;
+    private bool _playWhenOpened;
+    public bool HasSource => _player is not null;
     public bool IsPlaying { get; private set; }
     public bool IsReady { get; private set; }
     public TimeSpan Duration => _player is { NaturalDuration.HasTimeSpan: true } ? _player.NaturalDuration.TimeSpan : TimeSpan.Zero;
-    public TimeSpan Position => _player?.Position ?? TimeSpan.Zero;
+    public TimeSpan Position => _player is null ? TimeSpan.Zero : !IsReady ? TimeSpan.FromSeconds(_pendingPosition) : _player.Position;
     public double Volume { get => _volume; set { _volume = Math.Clamp(value, 0, 1); if (_player is not null) _player.Volume = _volume; } }
     public double PlaybackRate
     {
@@ -20,7 +24,7 @@ public sealed partial class AudioService : IDisposable
         {
             double previous = _playbackRate;
             _playbackRate = double.IsFinite(value) ? Math.Clamp(value, 0.5, 3) : 1;
-            if (_player is not null && IsReady) _player.SpeedRatio = _playbackRate;
+            if (previous != _playbackRate && _player is not null && IsReady) _player.SpeedRatio = _playbackRate;
             if (previous != _playbackRate && _player is not null) BeginObservation("rate-change");
         }
     }
@@ -28,11 +32,27 @@ public sealed partial class AudioService : IDisposable
     public event Action? Ended;
     public event Action<string>? Failed;
 
-    public void Open(string path)
+    public void Open(string path) => Open(path, 0);
+
+    public void Open(string path, double initialSeconds)
     {
-        Stop();
+        if (!double.IsFinite(initialSeconds) || initialSeconds < 0) throw new ArgumentOutOfRangeException(nameof(initialSeconds));
+        _recoveryAttempts = 0;
+        OpenCore(path, initialSeconds, recovering: false);
+    }
+
+    private void OpenCore(string path, double initialSeconds, bool recovering)
+    {
+        ClosePlayer();
+        _sourcePath = path;
+        _pendingPosition = initialSeconds;
+        _playWhenOpened = true;
+        IsPlaying = true;
+        _recovering = recovering;
+        _restartOnResume = false;
+        _healthySince = null;
         MediaId = Interlocked.Increment(ref _nextMediaId);
-        Log.Information("Opening audio {Audio}; media={MediaId}; rate={Rate}", path, MediaId, _playbackRate);
+        Log.Information("Opening audio {Audio}; media={MediaId}; rate={Rate}; initialSeconds={InitialSeconds}; recoveryAttempt={RecoveryAttempt}", path, MediaId, _playbackRate, initialSeconds, _recoveryAttempts);
         var player = new MediaPlayer { Volume = _volume };
         _player = player;
         long mediaId = MediaId;
@@ -43,8 +63,19 @@ public sealed partial class AudioService : IDisposable
         {
             if (!IsCurrentEvent(player, mediaId, "opened")) return;
             Log.Information("Audio opened; media={MediaId}; duration={Duration}; rate={Rate}; openMs={OpenMs}", MediaId, Duration, _playbackRate, MediaElapsedMs);
-            IsReady = true; IsPlaying = true; player.SpeedRatio = _playbackRate; player.Play();
-            BeginObservation("open-play");
+            try
+            {
+                IsReady = true;
+                // Apply the initial seek while paused, before issuing a non-zero playback rate.
+                ApplyPosition(_pendingPosition, _playWhenOpened);
+                IsPlaying = _playWhenOpened;
+                BeginObservation(IsPlaying ? "open-position-play" : "open-position-paused");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Audio initial positioning failed; media={MediaId}; targetSeconds={TargetSeconds}", MediaId, _pendingPosition);
+                Stop(); Failed?.Invoke(ex.Message); return;
+            }
             Opened?.Invoke();
         };
         player.MediaEnded += (_, _) =>
@@ -66,33 +97,68 @@ public sealed partial class AudioService : IDisposable
 
     public void Toggle(string source = "play-button")
     {
-        if (_player is null || !IsReady)
+        if (_player is null)
         {
             Log.Information("Playback toggle ignored; media={MediaId}; source={Source}; ready={Ready}; hasPlayer={HasPlayer}", MediaId, source, IsReady, _player is not null);
             return;
         }
+        if (!IsReady)
+        {
+            _playWhenOpened = !_playWhenOpened;
+            IsPlaying = _playWhenOpened;
+            WriteDiagnostic("opening-play-intent-changed");
+            return;
+        }
         WriteDiagnostic(IsPlaying ? "pause-requested" : "play-requested");
-        if (IsPlaying) _player.Pause();
-        else { if (_ended || (Duration > TimeSpan.Zero && Position >= Duration)) _player.Position = TimeSpan.Zero; _ended = false; _player.Play(); }
+        if (IsPlaying) { _player.Pause(); _healthySince = null; }
+        else
+        {
+            if (_automaticRecovery && _restartOnResume) { RecoverPlayback(Position.TotalSeconds, "resume-stalled"); return; }
+            if (_ended || (Duration > TimeSpan.Zero && Position >= Duration)) ApplyPosition(0, play: true);
+            else _player.Play();
+            _ended = false;
+        }
         IsPlaying = !IsPlaying;
+        _playWhenOpened = IsPlaying;
         BeginObservation(IsPlaying ? "resume" : "pause");
         Log.Information("Playback command issued; media={MediaId}; command={CommandId}; source={Source}; requestedPlaying={RequestedPlaying}; position={Position}", MediaId, _commandId, source, IsPlaying, Position);
     }
 
     public void Seek(double seconds, string source = "seek")
     {
-        if (_player is not null && IsReady)
+        if (!double.IsFinite(seconds)) throw new ArgumentOutOfRangeException(nameof(seconds));
+        if (_player is not null)
         {
-            double target = Math.Clamp(seconds, 0, Duration.TotalSeconds);
+            double target = IsReady ? Math.Clamp(seconds, 0, Duration.TotalSeconds) : Math.Max(0, seconds);
             Log.Information("Audio seek requested; media={MediaId}; nextCommand={CommandId}; source={Source}; fromSeconds={FromSeconds}; requestedSeconds={RequestedSeconds}; targetSeconds={TargetSeconds}; durationSeconds={DurationSeconds}",
                 MediaId, _commandId + 1, source, Position.TotalSeconds, seconds, target, Duration.TotalSeconds);
-            _player.Position = TimeSpan.FromSeconds(target); _ended = false;
+            _pendingPosition = target; _ended = false; _recoveryAttempts = 0; _healthySince = null;
+            if (!IsReady) { WriteDiagnostic("opening-seek-updated"); return; }
+            if (_automaticRecovery && _restartOnResume && IsPlaying) { RecoverPlayback(target, "seek-stalled"); return; }
+            ApplyPosition(target, IsPlaying);
             BeginObservation("seek");
         }
         else Log.Information("Audio seek ignored; media={MediaId}; source={Source}; requestedSeconds={RequestedSeconds}; ready={Ready}", MediaId, source, seconds, IsReady);
     }
 
     public void Stop()
+    {
+        ClosePlayer();
+        _sourcePath = null; _pendingPosition = 0; _playWhenOpened = false;
+        _recovering = _restartOnResume = false; _recoveryAttempts = 0; _healthySince = null;
+    }
+
+    private void ApplyPosition(double seconds, bool play)
+    {
+        if (_player is null) return;
+        _pendingPosition = Math.Clamp(seconds, 0, Duration.TotalSeconds);
+        _player.Pause();
+        _player.Position = TimeSpan.FromSeconds(_pendingPosition);
+        _player.SpeedRatio = _playbackRate;
+        if (play) _player.Play();
+    }
+
+    private void ClosePlayer()
     {
         WriteDiagnostic("close-requested");
         _diagnosticTimer.Stop();
